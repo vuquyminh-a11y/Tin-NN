@@ -14,6 +14,7 @@
       --border: #cbd5e1;
       --success: #16a34a;
       --danger: #dc2626;
+      --warning: #d97706;
     }
     * { box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
     body { margin: 0; background: var(--bg); color: var(--text); display: flex; height: 100vh; }
@@ -89,6 +90,11 @@
       background: #eff6ff; border: 1px solid #bfdbfe; padding: 20px; border-radius: 8px;
       display: flex; flex-direction: column; gap: 12px;
     }
+    .proxy-box {
+      margin-top: 12px; background: #fffbeb; border: 1px solid #fde68a;
+      padding: 16px; border-radius: 8px; display: flex; flex-direction: column; gap: 10px;
+    }
+    .proxy-title { font-weight: 700; font-size: 14px; color: #92400e; }
     .checkin-controls { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
     select, input, textarea {
       padding: 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 14px;
@@ -96,6 +102,8 @@
     select { flex: 1; min-width: 220px; background: white; }
     .btn-checkin { background: var(--success); color: white; padding: 10px 20px; font-size: 14px; }
     .btn-checkin:hover:not(:disabled) { background: #15803d; }
+    .btn-proxy { background: var(--warning); color: white; padding: 10px 18px; font-size: 14px; }
+    .btn-proxy:hover:not(:disabled) { background: #b45309; }
     .checkin-hint { font-size: 13px; color: #475569; }
 
     /* Khu vực ghi nhận Comment của thành viên */
@@ -111,12 +119,23 @@
       border-radius: 6px; padding: 12px 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.03);
     }
     .comment-header {
-      display: flex; justify-content: space-between; align-items: center;
-      margin-bottom: 6px; font-size: 13px; border-bottom: 1px dashed #e2e8f0; padding-bottom: 6px;
+      display: flex; justify-content: space-between; align-items: center; gap: 8px;
+      margin-bottom: 6px; font-size: 13px; border-bottom: 1px dashed #e2e8f0; padding-bottom: 6px; flex-wrap: wrap;
     }
     .comment-author { font-weight: 700; color: #0f172a; }
+    .comment-meta-right { display: flex; align-items: center; gap: 8px; }
     .comment-time { color: #64748b; font-size: 12px; }
+    .btn-mini {
+      padding: 3px 8px; font-size: 11px; border-radius: 4px; border: 1px solid var(--border);
+      background: #f8fafc; cursor: pointer; font-weight: 600;
+    }
+    .btn-mini:hover { background: #e2e8f0; }
+    .btn-mini-del { color: var(--danger); border-color: #fecaca; background: #fef2f2; }
+    .btn-mini-del:hover { background: #fee2e2; }
     .comment-body { font-size: 14px; line-height: 1.55; white-space: pre-line; color: #334155; }
+    .edit-area { margin-top: 8px; display: flex; flex-direction: column; gap: 8px; }
+    .edit-area textarea { width: 100%; resize: vertical; }
+    .edit-actions { display: flex; gap: 8px; justify-content: flex-end; }
     .empty-comment { color: #64748b; font-style: italic; font-size: 14px; padding: 10px 0; }
 
     /* Bảng danh sách & Báo cáo */
@@ -202,6 +221,7 @@
   let appData = { thanhVien: [], cuocHop: [], diemDanh: [], binhLuan: [] };
   let currentMaHop = null;
   let loggedInUser = null;
+  let editingCommentId = null;
 
   function parseJwt(token) {
     const base64Url = token.split('.')[1];
@@ -235,6 +255,7 @@
           email: (payload.email || '').trim().toLowerCase(),
           name: payload.name || payload.email
         };
+        editingCommentId = null;
         updatePermissionsUI();
         if (currentMaHop) {
           selectMeeting(currentMaHop);
@@ -252,6 +273,7 @@
 
   function logoutGoogle() {
     loggedInUser = null;
+    editingCommentId = null;
     if (window.google && google.accounts && google.accounts.id) {
       google.accounts.id.disableAutoSelect();
     }
@@ -345,7 +367,10 @@
     [...appData.cuocHop].reverse().forEach(ch => {
       const div = document.createElement('div');
       div.className = `meeting-item ${ch.MaHop === currentMaHop ? 'active' : ''}`;
-      div.onclick = () => selectMeeting(ch.MaHop);
+      div.onclick = () => {
+        editingCommentId = null;
+        selectMeeting(ch.MaHop);
+      };
       div.innerHTML = `
         <div class="date">Ngày: ${formatDate(ch.NgayHop)}</div>
         <div class="title">${escapeHtml(ch.TieuDe)}</div>
@@ -362,18 +387,43 @@
 
     const ddList = appData.diemDanh.filter(x => x.MaHop === maHop);
     const blList = appData.binhLuan.filter(x => x.MaHop === maHop);
-    const presentIds = ddList.map(x => x.MaGV);
+    const presentIds = ddList.map(x => String(x.MaGV).trim());
     const matchedMember = getMatchedMember();
-    const alreadyCheckedIn = matchedMember ? presentIds.includes(matchedMember.MaGV) : false;
+    const isLeader = isCurrentUserLeader();
+    const alreadyCheckedIn = matchedMember ? presentIds.includes(String(matchedMember.MaGV).trim()) : false;
     const canCheckin = Boolean(matchedMember && !alreadyCheckedIn);
 
     const optionsHtml = appData.thanhVien.map(tv => {
-      const isChecked = presentIds.includes(tv.MaGV);
-      const isCurrentUser = matchedMember && matchedMember.MaGV === tv.MaGV;
-      return `<option value="${tv.MaGV}" ${isCurrentUser ? 'selected' : ''} disabled>
-        ${escapeHtml(tv.HoTen)} (${escapeHtml(tv.Email)}) ${isChecked ? '✓ Đã điểm danh' : ''}
+      const isChecked = presentIds.includes(String(tv.MaGV).trim());
+      const isCurrentUser = matchedMember && String(matchedMember.MaGV).trim() === String(tv.MaGV).trim();
+      return `<option value="${escapeHtml(tv.MaGV)}" ${isCurrentUser ? 'selected' : ''} disabled>
+        ${escapeHtml(tv.HoTen)} (${escapeHtml(tv.Email || 'Chưa có email')}) ${isChecked ? '✓ Đã điểm danh' : ''}
       </option>`;
     }).join('');
+
+    // Danh sách thành viên để Tổ trưởng điểm danh hộ
+    const proxyOptionsHtml = appData.thanhVien.map(tv => {
+      const isChecked = presentIds.includes(String(tv.MaGV).trim());
+      const emailInfo = tv.Email ? tv.Email : 'Không có email Google';
+      return `<option value="${escapeHtml(tv.MaGV)}" ${isChecked ? 'disabled' : ''}>
+        ${escapeHtml(tv.HoTen)} — ${escapeHtml(emailInfo)} ${isChecked ? '(Đã điểm danh)' : ''}
+      </option>`;
+    }).join('');
+
+    const proxyBoxHtml = isLeader ? `
+      <div class="proxy-box">
+        <div class="proxy-title">🛡️ Điểm danh hộ cho thành viên (Dành cho Tổ trưởng khi thành viên không đăng nhập được hoặc chưa có email Google)</div>
+        <div class="checkin-controls">
+          <select id="selectProxyGV">
+            <option value="">-- Chọn thành viên cần điểm danh hộ --</option>
+            ${proxyOptionsHtml}
+          </select>
+          <button class="btn btn-proxy" id="btnProxyCheckin" onclick="submitProxyCheckin()">
+            + Xác nhận có mặt thay
+          </button>
+        </div>
+      </div>
+    ` : '';
 
     let hintText = 'Vui lòng đăng nhập bằng tài khoản Google nằm trong cột Email của bảng thành viên để kích hoạt nút xác nhận.';
     if (loggedInUser && !matchedMember) {
@@ -384,26 +434,50 @@
       hintText = `Đã xác thực tài khoản ${loggedInUser.email}. Nhấn nút bên cạnh để xác nhận tham gia họp.`;
     }
 
-    // Danh sách bình luận / ý kiến đóng góp của các thành viên
+    // Danh sách bình luận kèm nút Sửa / Xóa cho chủ comment (hoặc Tổ trưởng)
     const commentsHtml = blList.length > 0
-      ? blList.map(bl => `
-          <div class="comment-item">
-            <div class="comment-header">
-              <span class="comment-author">💬 ${escapeHtml(bl.HoTen)} (${escapeHtml(bl.MaGV)})</span>
-              <span class="comment-time">${escapeHtml(bl.ThoiGian)}</span>
+      ? blList.map(bl => {
+          const isOwner = matchedMember && String(bl.MaGV).trim() === String(matchedMember.MaGV).trim();
+          const canModify = Boolean(isOwner || isLeader);
+          const isEditing = editingCommentId === bl.MaBL;
+
+          const actionButtons = canModify ? `
+            <button class="btn-mini" onclick="startEditComment('${escapeHtml(bl.MaBL)}')">✏️ Sửa</button>
+            <button class="btn-mini btn-mini-del" onclick="deleteComment('${escapeHtml(bl.MaBL)}')">🗑️ Xóa</button>
+          ` : '';
+
+          const bodyContent = isEditing ? `
+            <div class="edit-area">
+              <textarea id="editTextarea_${escapeHtml(bl.MaBL)}" rows="3">${escapeHtml(bl.NoiDung)}</textarea>
+              <div class="edit-actions">
+                <button class="btn-mini" onclick="cancelEditComment()">Hủy</button>
+                <button class="btn-mini" style="background:#2563eb; color:white; border-color:#2563eb;" onclick="saveEditComment('${escapeHtml(bl.MaBL)}')">💾 Lưu sửa</button>
+              </div>
             </div>
-            <div class="comment-body">${escapeHtml(bl.NoiDung)}</div>
-          </div>
-        `).join('')
+          ` : `<div class="comment-body">${escapeHtml(bl.NoiDung)}</div>`;
+
+          return `
+            <div class="comment-item">
+              <div class="comment-header">
+                <span class="comment-author">💬 ${escapeHtml(bl.HoTen)} (${escapeHtml(bl.MaGV)})</span>
+                <div class="comment-meta-right">
+                  <span class="comment-time">${escapeHtml(bl.ThoiGian)}</span>
+                  ${actionButtons}
+                </div>
+              </div>
+              ${bodyContent}
+            </div>
+          `;
+        }).join('')
       : '<div class="empty-comment">Chưa có ý kiến đóng góp nào từ thành viên trong buổi họp này.</div>';
 
     const rowsHtml = appData.thanhVien.map((tv, idx) => {
-      const record = ddList.find(x => x.MaGV === tv.MaGV);
+      const record = ddList.find(x => String(x.MaGV).trim() === String(tv.MaGV).trim());
       return `
         <tr>
           <td>${idx + 1}</td>
           <td><b>${escapeHtml(tv.HoTen)}</b></td>
-          <td>${escapeHtml(tv.Email)}<br><small>${escapeHtml(tv.SoDienThoai)}</small></td>
+          <td>${escapeHtml(tv.Email || 'Chưa cập nhật')}<br><small>${escapeHtml(tv.SoDienThoai || '')}</small></td>
           <td>${record ? `<span class="badge-present">Có mặt (${escapeHtml(record.ThoiGian)})</span>` : `<span class="badge-absent">Vắng / Chưa xác nhận</span>`}</td>
         </tr>
       `;
@@ -433,6 +507,7 @@
           </div>
           <div class="checkin-hint">${hintText}</div>
         </div>
+        ${proxyBoxHtml}
       </div>
 
       <div class="section">
@@ -451,7 +526,7 @@
         <h3>4. Nội dung chi tiết & Ý kiến đóng góp của thành viên (${blList.length})</h3>
         <div class="comment-form">
           <textarea id="inComment" rows="3"
-            placeholder="${matchedMember ? `Nhập ý kiến đóng góp, thảo luận của ${matchedMember.HoTen}...` : 'Vui lòng đăng nhập đúng email thành viên trong tổ để gửi ý kiến đóng góp...'}"
+            placeholder="${matchedMember ? `Nhập ý kiến đóng góp, thảo luận của ${escapeHtml(matchedMember.HoTen)}...` : 'Vui lòng đăng nhập đúng email thành viên trong tổ để gửi ý kiến đóng góp...'}"
             ${matchedMember ? '' : 'disabled'}></textarea>
           <div class="comment-form-footer">
             <span style="font-size:12px; color:#64748b;">
@@ -514,7 +589,40 @@
     }
   }
 
-  // Gửi comment / ý kiến đóng góp lên Google Sheets
+  // Tổ trưởng điểm danh hộ
+  async function submitProxyCheckin() {
+    if (!isCurrentUserLeader() || !loggedInUser) {
+      return alert('Chỉ tài khoản Tổ trưởng mới có quyền điểm danh hộ!');
+    }
+
+    const maGV = document.getElementById('selectProxyGV').value;
+    if (!maGV) {
+      return alert('Vui lòng chọn thành viên cần điểm danh hộ!');
+    }
+
+    const btn = document.getElementById('btnProxyCheckin');
+    btn.disabled = true;
+    btn.innerText = 'Đang lưu...';
+
+    const res = await fetch(SCRIPT_URL, {
+      method: 'POST',
+      body: JSON.stringify({
+        action: 'diemDanhHo',
+        maHop: currentMaHop,
+        maGV: maGV,
+        email: loggedInUser.email
+      })
+    });
+    const result = await res.json();
+    if (result.status === 'success') {
+      await loadData();
+    } else {
+      alert(result.message);
+      btn.disabled = false;
+      btn.innerText = '+ Xác nhận có mặt thay';
+    }
+  }
+
   async function submitComment() {
     const matchedMember = getMatchedMember();
     if (!loggedInUser || !matchedMember) {
@@ -550,21 +658,77 @@
     }
   }
 
+  function startEditComment(maBL) {
+    editingCommentId = maBL;
+    selectMeeting(currentMaHop);
+  }
+
+  function cancelEditComment() {
+    editingCommentId = null;
+    selectMeeting(currentMaHop);
+  }
+
+  async function saveEditComment(maBL) {
+    if (!loggedInUser) return alert('Vui lòng đăng nhập Google!');
+    const textarea = document.getElementById('editTextarea_' + maBL);
+    const noiDungMoi = textarea ? textarea.value.trim() : '';
+    if (!noiDungMoi) return alert('Nội dung bình luận không được để trống!');
+
+    const res = await fetch(SCRIPT_URL, {
+      method: 'POST',
+      body: JSON.stringify({
+        action: 'suaBinhLuan',
+        maBL: maBL,
+        email: loggedInUser.email,
+        noiDung: noiDungMoi
+      })
+    });
+    const result = await res.json();
+    if (result.status === 'success') {
+      editingCommentId = null;
+      await loadData();
+    } else {
+      alert(result.message);
+    }
+  }
+
+  async function deleteComment(maBL) {
+    if (!loggedInUser) return alert('Vui lòng đăng nhập Google!');
+    if (!confirm('Bạn có chắc muốn xóa bình luận này không?')) return;
+
+    const res = await fetch(SCRIPT_URL, {
+      method: 'POST',
+      body: JSON.stringify({
+        action: 'xoaBinhLuan',
+        maBL: maBL,
+        email: loggedInUser.email
+      })
+    });
+    const result = await res.json();
+    if (result.status === 'success') {
+      if (editingCommentId === maBL) editingCommentId = null;
+      await loadData();
+    } else {
+      alert(result.message);
+    }
+  }
+
   function renderReport() {
     if (!isCurrentUserLeader()) {
       return alert('Chỉ tài khoản Tổ trưởng mới có quyền xem báo cáo tổng hợp!');
     }
 
     currentMaHop = null;
+    editingCommentId = null;
     renderSidebar();
     const totalMembers = appData.thanhVien.length;
 
     const reportRows = appData.cuocHop.map((ch, idx) => {
       const ddList = appData.diemDanh.filter(x => x.MaHop === ch.MaHop);
       const blList = appData.binhLuan.filter(x => x.MaHop === ch.MaHop);
-      const presentIds = ddList.map(x => x.MaGV);
+      const presentIds = ddList.map(x => String(x.MaGV).trim());
       const absentNames = appData.thanhVien
-        .filter(tv => !presentIds.includes(tv.MaGV))
+        .filter(tv => !presentIds.includes(String(tv.MaGV).trim()))
         .map(tv => tv.HoTen)
         .join(', ');
 
