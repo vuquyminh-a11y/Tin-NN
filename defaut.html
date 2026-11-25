@@ -2,7 +2,7 @@
 <html lang="vi">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Sổ Họp Tổ Chuyên Môn Tin - Ngoại Ngữ</title>
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   <style>
@@ -75,9 +75,9 @@
 
     .page-header { border-bottom: 2px solid var(--primary); padding-bottom: 15px; margin-bottom: 25px; }
     .page-header h1 { margin: 0; font-size: 24px; color: var(--primary); }
-    .page-meta { display: flex; gap: 20px; margin-top: 8px; font-size: 14px; color: #64748b; }
+    .page-meta { display: flex; gap: 20px; margin-top: 8px; font-size: 14px; color: #64748b; flex-wrap: wrap; }
     
-    .section { margin-bottom: 25px; }
+    .section { margin-bottom: 28px; }
     .section h3 { font-size: 16px; border-left: 4px solid var(--primary); padding-left: 10px; margin-bottom: 12px; }
     .content-box {
       background: #f8fafc; padding: 15px; border-radius: 6px; border: 1px solid var(--border);
@@ -98,9 +98,30 @@
     .btn-checkin:hover:not(:disabled) { background: #15803d; }
     .checkin-hint { font-size: 13px; color: #475569; }
 
+    /* Khu vực ghi nhận Comment của thành viên */
+    .comment-form {
+      background: #f8fafc; border: 1px solid var(--border); padding: 15px; border-radius: 8px;
+      margin-bottom: 16px; display: flex; flex-direction: column; gap: 10px;
+    }
+    .comment-form textarea { width: 100%; resize: vertical; background: white; }
+    .comment-form-footer { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .comment-list { display: flex; flex-direction: column; gap: 12px; }
+    .comment-item {
+      background: #ffffff; border: 1px solid #e2e8f0; border-left: 4px solid #38bdf8;
+      border-radius: 6px; padding: 12px 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+    }
+    .comment-header {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-bottom: 6px; font-size: 13px; border-bottom: 1px dashed #e2e8f0; padding-bottom: 6px;
+    }
+    .comment-author { font-weight: 700; color: #0f172a; }
+    .comment-time { color: #64748b; font-size: 12px; }
+    .comment-body { font-size: 14px; line-height: 1.55; white-space: pre-line; color: #334155; }
+    .empty-comment { color: #64748b; font-style: italic; font-size: 14px; padding: 10px 0; }
+
     /* Bảng danh sách & Báo cáo */
     table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 14px; }
-    th, td { border: 1px solid var(--border); padding: 10px; text-align: left; }
+    th, td { border: 1px solid var(--border); padding: 10px; text-align: left; vertical-align: top; }
     th { background: #f1f5f9; font-weight: 600; }
     .badge-present { background: #dcfce7; color: var(--success); padding: 4px 8px; border-radius: 4px; font-weight: 600; font-size: 12px; }
     .badge-absent { background: #fee2e2; color: var(--danger); padding: 4px 8px; border-radius: 4px; font-weight: 600; font-size: 12px; }
@@ -126,7 +147,6 @@
       <p>Tổ Tin học - Ngoại ngữ</p>
     </div>
     
-    <!-- Khu vực nút quản trị (Chỉ hiện khi Tổ trưởng đăng nhập) -->
     <div class="nav-actions" id="leaderActions" style="display:none;">
       <button class="btn btn-primary" onclick="openModal()">+ Trang họp mới</button>
       <button class="btn btn-report" onclick="renderReport()">Báo cáo</button>
@@ -179,7 +199,7 @@
   const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzdQCs0i5GZf246e_JUJ_2vOn5rsk9K1roQhHsOnfgND95SXRRVNDM-t47hehIqLpdk/exec';
   const GOOGLE_CLIENT_ID = '15043158504-np4sq3klpbh18paldd1bhs3j17i9b5e7.apps.googleusercontent.com';
 
-  let appData = { thanhVien: [], cuocHop: [], diemDanh: [] };
+  let appData = { thanhVien: [], cuocHop: [], diemDanh: [], binhLuan: [] };
   let currentMaHop = null;
   let loggedInUser = null;
 
@@ -190,6 +210,14 @@
       '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)
     ).join(''));
     return JSON.parse(jsonPayload);
+  }
+
+  function escapeHtml(str) {
+    return String(str || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
   }
 
   function initGoogleSignIn() {
@@ -228,7 +256,6 @@
       google.accounts.id.disableAutoSelect();
     }
     updatePermissionsUI();
-    // Nếu đang ở trang báo cáo khi đăng xuất thì quay về trang họp gần nhất
     if (!currentMaHop && appData.cuocHop.length > 0) {
       selectMeeting(appData.cuocHop[appData.cuocHop.length - 1].MaHop);
     } else if (currentMaHop) {
@@ -243,7 +270,6 @@
     ) || null;
   }
 
-  // Kiểm tra quyền Tổ trưởng từ cột VaiTro
   function isCurrentUserLeader() {
     const matched = getMatchedMember();
     if (!matched) return false;
@@ -251,7 +277,6 @@
     return role === 'totruong' || role === 'tổ trưởng';
   }
 
-  // Cập nhật thanh thông báo và ẩn/hiện nút của Tổ trưởng
   function updatePermissionsUI() {
     const statusEl = document.getElementById('authStatusText');
     const signInBtnEl = document.getElementById('googleSignInBtn');
@@ -260,7 +285,7 @@
     const memberNoticeEl = document.getElementById('memberNotice');
 
     if (!loggedInUser) {
-      statusEl.innerHTML = 'Bạn chưa đăng nhập địa chỉ email Google. Vui lòng đăng nhập để điểm danh.';
+      statusEl.innerHTML = 'Bạn chưa đăng nhập địa chỉ email Google. Vui lòng đăng nhập để điểm danh và góp ý.';
       signInBtnEl.style.display = 'block';
       logoutBtnEl.style.display = 'none';
       leaderActionsEl.style.display = 'none';
@@ -274,7 +299,6 @@
     const matched = getMatchedMember();
     const isLeader = isCurrentUserLeader();
 
-    // Ẩn/hiện nút Tạo trang họp mới & Báo cáo
     leaderActionsEl.style.display = isLeader ? 'flex' : 'none';
     memberNoticeEl.style.display = isLeader ? 'none' : 'block';
 
@@ -282,12 +306,12 @@
       const roleTag = isLeader ? '<span class="role-badge">Tổ trưởng</span>' : '<span class="role-badge">Thành viên</span>';
       statusEl.innerHTML = `
         Bạn đang đăng nhập bằng địa chỉ email Google: <b>${loggedInUser.email}</b> —
-        <span class="auth-ok">Khớp với: ${matched.HoTen}</span> ${roleTag}
+        <span class="auth-ok">Khớp với: ${escapeHtml(matched.HoTen)}</span> ${roleTag}
       `;
     } else {
       statusEl.innerHTML = `
         Bạn đang đăng nhập bằng địa chỉ email Google: <b>${loggedInUser.email}</b> —
-        <span class="auth-warn">Email này chưa khớp với cột Email trong danh sách thành viên tổ</span>. Nút xác nhận tham gia họp đang bị khóa.
+        <span class="auth-warn">Email này chưa khớp với cột Email trong danh sách thành viên tổ</span>. Các nút xác nhận và góp ý đang bị khóa.
       `;
     }
   }
@@ -295,7 +319,13 @@
   async function loadData() {
     try {
       const res = await fetch(SCRIPT_URL);
-      appData = await res.json();
+      const data = await res.json();
+      appData = {
+        thanhVien: data.thanhVien || [],
+        cuocHop: data.cuocHop || [],
+        diemDanh: data.diemDanh || [],
+        binhLuan: data.binhLuan || []
+      };
       updatePermissionsUI();
       renderSidebar();
       if (appData.cuocHop.length > 0) {
@@ -318,7 +348,7 @@
       div.onclick = () => selectMeeting(ch.MaHop);
       div.innerHTML = `
         <div class="date">Ngày: ${formatDate(ch.NgayHop)}</div>
-        <div class="title">${ch.TieuDe}</div>
+        <div class="title">${escapeHtml(ch.TieuDe)}</div>
       `;
       listEl.appendChild(div);
     });
@@ -331,6 +361,7 @@
     if (!ch) return;
 
     const ddList = appData.diemDanh.filter(x => x.MaHop === maHop);
+    const blList = appData.binhLuan.filter(x => x.MaHop === maHop);
     const presentIds = ddList.map(x => x.MaGV);
     const matchedMember = getMatchedMember();
     const alreadyCheckedIn = matchedMember ? presentIds.includes(matchedMember.MaGV) : false;
@@ -340,7 +371,7 @@
       const isChecked = presentIds.includes(tv.MaGV);
       const isCurrentUser = matchedMember && matchedMember.MaGV === tv.MaGV;
       return `<option value="${tv.MaGV}" ${isCurrentUser ? 'selected' : ''} disabled>
-        ${tv.HoTen} (${tv.Email}) ${isChecked ? '✓ Đã điểm danh' : ''}
+        ${escapeHtml(tv.HoTen)} (${escapeHtml(tv.Email)}) ${isChecked ? '✓ Đã điểm danh' : ''}
       </option>`;
     }).join('');
 
@@ -348,29 +379,43 @@
     if (loggedInUser && !matchedMember) {
       hintText = `Tài khoản ${loggedInUser.email} không trùng khớp với bất kỳ email nào trong danh sách thành viên.`;
     } else if (matchedMember && alreadyCheckedIn) {
-      hintText = `Bạn (${matchedMember.HoTen}) đã xác nhận tham gia cuộc họp này.`;
+      hintText = `Bạn (${escapeHtml(matchedMember.HoTen)}) đã xác nhận tham gia cuộc họp này.`;
     } else if (canCheckin) {
       hintText = `Đã xác thực tài khoản ${loggedInUser.email}. Nhấn nút bên cạnh để xác nhận tham gia họp.`;
     }
+
+    // Danh sách bình luận / ý kiến đóng góp của các thành viên
+    const commentsHtml = blList.length > 0
+      ? blList.map(bl => `
+          <div class="comment-item">
+            <div class="comment-header">
+              <span class="comment-author">💬 ${escapeHtml(bl.HoTen)} (${escapeHtml(bl.MaGV)})</span>
+              <span class="comment-time">${escapeHtml(bl.ThoiGian)}</span>
+            </div>
+            <div class="comment-body">${escapeHtml(bl.NoiDung)}</div>
+          </div>
+        `).join('')
+      : '<div class="empty-comment">Chưa có ý kiến đóng góp nào từ thành viên trong buổi họp này.</div>';
 
     const rowsHtml = appData.thanhVien.map((tv, idx) => {
       const record = ddList.find(x => x.MaGV === tv.MaGV);
       return `
         <tr>
           <td>${idx + 1}</td>
-          <td><b>${tv.HoTen}</b></td>
-          <td>${tv.Email}<br><small>${tv.SoDienThoai}</small></td>
-          <td>${record ? `<span class="badge-present">Có mặt (${record.ThoiGian})</span>` : `<span class="badge-absent">Vắng / Chưa xác nhận</span>`}</td>
+          <td><b>${escapeHtml(tv.HoTen)}</b></td>
+          <td>${escapeHtml(tv.Email)}<br><small>${escapeHtml(tv.SoDienThoai)}</small></td>
+          <td>${record ? `<span class="badge-present">Có mặt (${escapeHtml(record.ThoiGian)})</span>` : `<span class="badge-absent">Vắng / Chưa xác nhận</span>`}</td>
         </tr>
       `;
     }).join('');
 
     document.getElementById('notebookPage').innerHTML = `
       <div class="page-header">
-        <h1>${ch.TieuDe}</h1>
+        <h1>${escapeHtml(ch.TieuDe)}</h1>
         <div class="page-meta">
           <span>📅 Ngày họp: <b>${formatDate(ch.NgayHop)}</b></span>
           <span>👥 Sĩ số: <b>${ddList.length}/${appData.thanhVien.length}</b> thành viên</span>
+          <span>💬 Ý kiến đóng góp: <b>${blList.length}</b> lượt</span>
         </div>
       </div>
 
@@ -379,7 +424,7 @@
         <div class="checkin-box">
           <div class="checkin-controls">
             <select id="selectGV" disabled>
-              <option value="">${matchedMember ? `${matchedMember.HoTen} (${matchedMember.Email})` : '-- Chưa khớp tài khoản email --'}</option>
+              <option value="">${matchedMember ? `${escapeHtml(matchedMember.HoTen)} (${escapeHtml(matchedMember.Email)})` : '-- Chưa khớp tài khoản email --'}</option>
               ${optionsHtml}
             </select>
             <button class="btn btn-checkin" id="btnCheckin" onclick="submitCheckin()" ${canCheckin ? '' : 'disabled'}>
@@ -391,19 +436,39 @@
       </div>
 
       <div class="section">
-        <h3>2. Nội dung cuộc họp</h3>
-        <div class="content-box">${ch.NoiDung || 'Chưa cập nhật nội dung.'}</div>
+        <h3>2. Nội dung chính cuộc họp</h3>
+        <div class="content-box">${escapeHtml(ch.NoiDung) || 'Chưa cập nhật nội dung.'}</div>
       </div>
 
       <div class="section">
         <h3>3. Tài nguyên đính kèm</h3>
         <div class="content-box">
-          ${ch.TaiNguyen ? `<a href="${ch.TaiNguyen}" target="_blank">${ch.TaiNguyen}</a>` : 'Không có tài nguyên đính kèm.'}
+          ${ch.TaiNguyen ? `<a href="${escapeHtml(ch.TaiNguyen)}" target="_blank">${escapeHtml(ch.TaiNguyen)}</a>` : 'Không có tài nguyên đính kèm.'}
         </div>
       </div>
 
       <div class="section">
-        <h3>4. Bảng theo dõi chuyên cần buổi họp</h3>
+        <h3>4. Nội dung chi tiết & Ý kiến đóng góp của thành viên (${blList.length})</h3>
+        <div class="comment-form">
+          <textarea id="inComment" rows="3"
+            placeholder="${matchedMember ? `Nhập ý kiến đóng góp, thảo luận của ${matchedMember.HoTen}...` : 'Vui lòng đăng nhập đúng email thành viên trong tổ để gửi ý kiến đóng góp...'}"
+            ${matchedMember ? '' : 'disabled'}></textarea>
+          <div class="comment-form-footer">
+            <span style="font-size:12px; color:#64748b;">
+              ${matchedMember ? `Gửi với tư cách: <b>${escapeHtml(matchedMember.HoTen)}</b>` : 'Chỉ thành viên trong danh sách mới được gửi bình luận'}
+            </span>
+            <button class="btn btn-primary" style="flex:none;" id="btnSendComment" onclick="submitComment()" ${matchedMember ? '' : 'disabled'}>
+              Gửi ý kiến đóng góp
+            </button>
+          </div>
+        </div>
+        <div class="comment-list">
+          ${commentsHtml}
+        </div>
+      </div>
+
+      <div class="section">
+        <h3>5. Bảng theo dõi chuyên cần buổi họp</h3>
         <table>
           <thead>
             <tr>
@@ -449,7 +514,42 @@
     }
   }
 
-  // Hiển thị trang Báo cáo tổng hợp (Chặn nếu không phải Tổ trưởng)
+  // Gửi comment / ý kiến đóng góp lên Google Sheets
+  async function submitComment() {
+    const matchedMember = getMatchedMember();
+    if (!loggedInUser || !matchedMember) {
+      return alert('Chỉ thành viên có email trong danh sách tổ mới được gửi ý kiến!');
+    }
+
+    const inputEl = document.getElementById('inComment');
+    const noiDung = inputEl.value.trim();
+    if (!noiDung) {
+      return alert('Vui lòng nhập nội dung ý kiến đóng góp!');
+    }
+
+    const btn = document.getElementById('btnSendComment');
+    btn.disabled = true;
+    btn.innerText = 'Đang gửi...';
+
+    const res = await fetch(SCRIPT_URL, {
+      method: 'POST',
+      body: JSON.stringify({
+        action: 'themBinhLuan',
+        maHop: currentMaHop,
+        email: loggedInUser.email,
+        noiDung: noiDung
+      })
+    });
+    const result = await res.json();
+    if (result.status === 'success') {
+      await loadData();
+    } else {
+      alert(result.message);
+      btn.disabled = false;
+      btn.innerText = 'Gửi ý kiến đóng góp';
+    }
+  }
+
   function renderReport() {
     if (!isCurrentUserLeader()) {
       return alert('Chỉ tài khoản Tổ trưởng mới có quyền xem báo cáo tổng hợp!');
@@ -461,20 +561,26 @@
 
     const reportRows = appData.cuocHop.map((ch, idx) => {
       const ddList = appData.diemDanh.filter(x => x.MaHop === ch.MaHop);
+      const blList = appData.binhLuan.filter(x => x.MaHop === ch.MaHop);
       const presentIds = ddList.map(x => x.MaGV);
       const absentNames = appData.thanhVien
         .filter(tv => !presentIds.includes(tv.MaGV))
         .map(tv => tv.HoTen)
         .join(', ');
 
+      const commentsSummary = blList.length > 0
+        ? blList.map(b => `• <b>${escapeHtml(b.HoTen)}:</b> ${escapeHtml(b.NoiDung)}`).join('<br>')
+        : '<span style="color:#94a3b8;">Không có</span>';
+
       return `
         <tr>
           <td>${idx + 1}</td>
-          <td><b>${ch.TieuDe}</b><br><small>${formatDate(ch.NgayHop)}</small></td>
+          <td><b>${escapeHtml(ch.TieuDe)}</b><br><small>${formatDate(ch.NgayHop)}</small></td>
           <td><b>${ddList.length}/${totalMembers}</b></td>
-          <td style="color:#dc2626; font-size:13px;">${absentNames || 'Đủ sĩ số'}</td>
-          <td style="font-size:13px;">${ch.NoiDung}</td>
-          <td>${ch.TaiNguyen ? `<a href="${ch.TaiNguyen}" target="_blank">Mở link</a>` : '-'}</td>
+          <td style="color:#dc2626; font-size:13px;">${escapeHtml(absentNames) || 'Đủ sĩ số'}</td>
+          <td style="font-size:13px;">${escapeHtml(ch.NoiDung)}</td>
+          <td style="font-size:13px;">${commentsSummary}</td>
+          <td>${ch.TaiNguyen ? `<a href="${escapeHtml(ch.TaiNguyen)}" target="_blank">Mở link</a>` : '-'}</td>
         </tr>
       `;
     }).join('');
@@ -494,7 +600,8 @@
             <th>Cuộc họp</th>
             <th>Tham gia</th>
             <th>Vắng mặt</th>
-            <th>Nội dung tóm tắt</th>
+            <th>Nội dung chính</th>
+            <th>Ý kiến thành viên</th>
             <th>Tài nguyên</th>
           </tr>
         </thead>
