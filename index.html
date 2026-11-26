@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+   <meta name="author" content="VU THI QUY - GDTX HOC MON" />
   <title>Sổ Họp Tổ Chuyên Môn Tin - Ngoại Ngữ</title>
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   <style>
@@ -21,7 +22,7 @@
     
     /* Sidebar danh sách trang họp */
     .sidebar {
-      width: 30%; background: #1e293b; color: white; display: flex; flex-direction: column;
+      width: 25%; background: #1e293b; color: white; display: flex; flex-direction: column;
       border-right: 4px solid #334155;
     }
     .sidebar-header { padding: 20px; background: #0f172a; border-bottom: 1px solid #334155; }
@@ -40,6 +41,8 @@
     .btn-primary:hover:not(:disabled) { background: #1d4ed8; }
     .btn-report { background: #475569; color: white; }
     .btn-report:hover:not(:disabled) { background: #64748b; }
+    .btn-excel { background: #0d9488; color: white; }
+    .btn-excel:hover:not(:disabled) { background: #0f766e; }
     
     .meeting-list { flex: 1; overflow-y: auto; padding: 10px; }
     .meeting-item {
@@ -54,12 +57,12 @@
     /* Vùng nội dung trang sổ */
     .main-content { flex: 1; padding: 30px; overflow-y: auto; display: flex; justify-content: center; }
     .notebook-page {
-      background: var(--paper); width: 100%; max-width: 900px; min-height: 100%;
+      background: var(--paper); width: 100%; max-width: 920px; min-height: 100%;
       padding: 40px; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.08);
       border-left: 12px solid #e2e8f0; position: relative;
     }
 
-    /* Thanh thông báo trạng thái đăng nhập Google */
+    /* Thanh thông báo trạng thái đăng nhập */
     .auth-banner {
       background: #f8fafc; border: 1px solid var(--border); border-radius: 8px;
       padding: 14px 18px; margin-bottom: 20px; display: flex;
@@ -72,9 +75,15 @@
       display: inline-block; background: #dbeafe; color: #1e40af;
       padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: 700; margin-left: 4px;
     }
+    .auth-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .btn-alt-login { background: #e0e7ff; color: #1e3a8a; padding: 7px 12px; font-size: 12px; }
+    .btn-alt-login:hover { background: #c7d2fe; }
     .btn-logout { background: #e2e8f0; color: #334155; padding: 6px 10px; font-size: 12px; }
 
-    .page-header { border-bottom: 2px solid var(--primary); padding-bottom: 15px; margin-bottom: 25px; }
+    .page-header {
+      border-bottom: 2px solid var(--primary); padding-bottom: 15px; margin-bottom: 25px;
+      display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap;
+    }
     .page-header h1 { margin: 0; font-size: 24px; color: var(--primary); }
     .page-meta { display: flex; gap: 20px; margin-top: 8px; font-size: 14px; color: #64748b; flex-wrap: wrap; }
     
@@ -145,13 +154,13 @@
     .badge-present { background: #dcfce7; color: var(--success); padding: 4px 8px; border-radius: 4px; font-weight: 600; font-size: 12px; }
     .badge-absent { background: #fee2e2; color: var(--danger); padding: 4px 8px; border-radius: 4px; font-weight: 600; font-size: 12px; }
 
-    /* Modal tạo cuộc họp */
+    /* Modal */
     .modal {
       display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5);
       justify-content: center; align-items: center; z-index: 100;
     }
     .modal-content {
-      background: white; padding: 25px; border-radius: 8px; width: 90%; max-width: 500px;
+      background: white; padding: 25px; border-radius: 8px; width: 90%; max-width: 460px;
       display: flex; flex-direction: column; gap: 12px;
     }
     .loading { text-align: center; padding: 40px; font-weight: 600; color: var(--primary); }
@@ -184,16 +193,33 @@
     <div class="notebook-page">
       <div class="auth-banner">
         <div class="auth-status" id="authStatusText">
-          Bạn chưa đăng nhập Google. Vui lòng đăng nhập để kiểm tra quyền điểm danh.
+          Bạn chưa đăng nhập. Vui lòng đăng nhập bằng Google hoặc tài khoản Email + Số điện thoại.
         </div>
-        <div style="display:flex; align-items:center; gap:8px;">
+        <div class="auth-actions">
           <div id="googleSignInBtn"></div>
-          <button class="btn btn-logout" id="btnLogout" style="display:none;" onclick="logoutGoogle()">Đổi tài khoản</button>
+          <button class="btn btn-alt-login" id="btnOpenCredLogin" onclick="openLoginModal()">🔑 Đăng nhập Email & SĐT</button>
+          <button class="btn btn-logout" id="btnLogout" style="display:none;" onclick="logoutUser()">Đăng xuất</button>
         </div>
       </div>
 
       <div id="notebookPage">
         <div class="loading">Đang kết nối dữ liệu Google Sheets...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal đăng nhập không dùng Gmail (Email + Số điện thoại) -->
+  <div class="modal" id="credLoginModal">
+    <div class="modal-content">
+      <h3 style="margin:0;">Đăng nhập bằng Email & Số điện thoại</h3>
+      <p style="margin:0; font-size:13px; color:#64748b;">
+        Dành cho thành viên không dùng Gmail hoặc không đăng nhập được Google Auth. Nhập khớp với dữ liệu trong sheet <b>ThanhVien</b>.
+      </p>
+      <input type="text" id="loginEmailInput" placeholder="Tên đăng nhập (Địa chỉ email)">
+      <input type="password" id="loginPhoneInput" placeholder="Mật khẩu (Số điện thoại)">
+      <div style="display:flex; gap:10px; justify-content: flex-end; margin-top: 8px;">
+        <button class="btn" onclick="closeLoginModal()">Hủy</button>
+        <button class="btn btn-primary" style="flex:none;" onclick="submitCredentialLogin()">Đăng nhập</button>
       </div>
     </div>
   </div>
@@ -220,7 +246,7 @@
 
   let appData = { thanhVien: [], cuocHop: [], diemDanh: [], binhLuan: [] };
   let currentMaHop = null;
-  let loggedInUser = null;
+  let loggedInUser = null; // { email, soDienThoai, name, authType: 'google' | 'credentials' }
   let editingCommentId = null;
 
   function parseJwt(token) {
@@ -230,6 +256,10 @@
       '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)
     ).join(''));
     return JSON.parse(jsonPayload);
+  }
+
+  function normalizePhone(phone) {
+    return String(phone || '').replace(/\D/g, '');
   }
 
   function escapeHtml(str) {
@@ -242,8 +272,6 @@
 
   function initGoogleSignIn() {
     if (!window.google || !GOOGLE_CLIENT_ID.includes('.apps.googleusercontent.com')) {
-      document.getElementById('authStatusText').innerHTML =
-        '<span class="auth-warn">Chưa cấu hình GOOGLE_CLIENT_ID.</span> Vui lòng cập nhật Client ID để bật xác thực email.';
       return;
     }
 
@@ -253,7 +281,9 @@
         const payload = parseJwt(response.credential);
         loggedInUser = {
           email: (payload.email || '').trim().toLowerCase(),
-          name: payload.name || payload.email
+          soDienThoai: '',
+          name: payload.name || payload.email,
+          authType: 'google'
         };
         editingCommentId = null;
         updatePermissionsUI();
@@ -271,7 +301,53 @@
     );
   }
 
-  function logoutGoogle() {
+  function openLoginModal() {
+    document.getElementById('loginEmailInput').value = '';
+    document.getElementById('loginPhoneInput').value = '';
+    document.getElementById('credLoginModal').style.display = 'flex';
+  }
+
+  function closeLoginModal() {
+    document.getElementById('credLoginModal').style.display = 'none';
+  }
+
+  // Đăng nhập bằng tên đăng nhập (Email) + mật khẩu (Số điện thoại)
+  function submitCredentialLogin() {
+    const emailInput = document.getElementById('loginEmailInput').value.trim().toLowerCase();
+    const phoneInput = normalizePhone(document.getElementById('loginPhoneInput').value);
+
+    if (!emailInput || !phoneInput) {
+      return alert('Vui lòng nhập đầy đủ tên đăng nhập (email) và mật khẩu (số điện thoại)!');
+    }
+
+    const found = appData.thanhVien.find(tv => {
+      const dbEmail = String(tv.Email || '').trim().toLowerCase();
+      const dbPhone = normalizePhone(tv.SoDienThoai);
+      return dbEmail === emailInput && dbPhone && dbPhone === phoneInput;
+    });
+
+    if (!found) {
+      return alert('Tên đăng nhập (email) hoặc mật khẩu (số điện thoại) không khớp với danh sách thành viên!');
+    }
+
+    loggedInUser = {
+      email: emailInput,
+      soDienThoai: phoneInput,
+      name: found.HoTen,
+      authType: 'credentials'
+    };
+    editingCommentId = null;
+    closeLoginModal();
+    updatePermissionsUI();
+
+    if (currentMaHop) {
+      selectMeeting(currentMaHop);
+    } else if (appData.cuocHop.length > 0) {
+      selectMeeting(appData.cuocHop[appData.cuocHop.length - 1].MaHop);
+    }
+  }
+
+  function logoutUser() {
     loggedInUser = null;
     editingCommentId = null;
     if (window.google && google.accounts && google.accounts.id) {
@@ -287,9 +363,15 @@
 
   function getMatchedMember() {
     if (!loggedInUser || !loggedInUser.email) return null;
-    return appData.thanhVien.find(
-      tv => String(tv.Email || '').trim().toLowerCase() === loggedInUser.email
-    ) || null;
+    return appData.thanhVien.find(tv => {
+      const dbEmail = String(tv.Email || '').trim().toLowerCase();
+      if (dbEmail !== loggedInUser.email) return false;
+      if (loggedInUser.authType === 'credentials') {
+        const dbPhone = normalizePhone(tv.SoDienThoai);
+        return dbPhone && dbPhone === normalizePhone(loggedInUser.soDienThoai);
+      }
+      return true;
+    }) || null;
   }
 
   function isCurrentUserLeader() {
@@ -302,13 +384,15 @@
   function updatePermissionsUI() {
     const statusEl = document.getElementById('authStatusText');
     const signInBtnEl = document.getElementById('googleSignInBtn');
+    const altLoginBtnEl = document.getElementById('btnOpenCredLogin');
     const logoutBtnEl = document.getElementById('btnLogout');
     const leaderActionsEl = document.getElementById('leaderActions');
     const memberNoticeEl = document.getElementById('memberNotice');
 
     if (!loggedInUser) {
-      statusEl.innerHTML = 'Bạn chưa đăng nhập địa chỉ email Google. Vui lòng đăng nhập để điểm danh và góp ý.';
+      statusEl.innerHTML = 'Bạn chưa đăng nhập. Vui lòng đăng nhập bằng Google hoặc Email + Số điện thoại.';
       signInBtnEl.style.display = 'block';
+      altLoginBtnEl.style.display = 'inline-block';
       logoutBtnEl.style.display = 'none';
       leaderActionsEl.style.display = 'none';
       memberNoticeEl.style.display = 'block';
@@ -316,6 +400,7 @@
     }
 
     signInBtnEl.style.display = 'none';
+    altLoginBtnEl.style.display = 'none';
     logoutBtnEl.style.display = 'inline-block';
 
     const matched = getMatchedMember();
@@ -324,16 +409,20 @@
     leaderActionsEl.style.display = isLeader ? 'flex' : 'none';
     memberNoticeEl.style.display = isLeader ? 'none' : 'block';
 
+    const methodText = loggedInUser.authType === 'credentials'
+      ? 'tài khoản Email & Số điện thoại'
+      : 'địa chỉ email Google';
+
     if (matched) {
       const roleTag = isLeader ? '<span class="role-badge">Tổ trưởng</span>' : '<span class="role-badge">Thành viên</span>';
       statusEl.innerHTML = `
-        Bạn đang đăng nhập bằng địa chỉ email Google: <b>${loggedInUser.email}</b> —
+        Bạn đang đăng nhập bằng ${methodText}: <b>${escapeHtml(loggedInUser.email)}</b> —
         <span class="auth-ok">Khớp với: ${escapeHtml(matched.HoTen)}</span> ${roleTag}
       `;
     } else {
       statusEl.innerHTML = `
-        Bạn đang đăng nhập bằng địa chỉ email Google: <b>${loggedInUser.email}</b> —
-        <span class="auth-warn">Email này chưa khớp với cột Email trong danh sách thành viên tổ</span>. Các nút xác nhận và góp ý đang bị khóa.
+        Bạn đang đăng nhập bằng ${methodText}: <b>${escapeHtml(loggedInUser.email)}</b> —
+        <span class="auth-warn">Tài khoản chưa khớp với danh sách thành viên tổ</span>. Quyền thao tác đang bị khóa.
       `;
     }
   }
@@ -397,11 +486,10 @@
       const isChecked = presentIds.includes(String(tv.MaGV).trim());
       const isCurrentUser = matchedMember && String(matchedMember.MaGV).trim() === String(tv.MaGV).trim();
       return `<option value="${escapeHtml(tv.MaGV)}" ${isCurrentUser ? 'selected' : ''} disabled>
-        ${escapeHtml(tv.HoTen)} (${escapeHtml(tv.Email || 'Chưa có email')}) ${isChecked ? '✓ Đã điểm danh' : ''}
+        ${escapeHtml(tv.HoTen)} (${escapeHtml(tv.Email || 'Không có email')}) ${isChecked ? '✓ Đã điểm danh' : ''}
       </option>`;
     }).join('');
 
-    // Danh sách thành viên để Tổ trưởng điểm danh hộ
     const proxyOptionsHtml = appData.thanhVien.map(tv => {
       const isChecked = presentIds.includes(String(tv.MaGV).trim());
       const emailInfo = tv.Email ? tv.Email : 'Không có email Google';
@@ -412,7 +500,7 @@
 
     const proxyBoxHtml = isLeader ? `
       <div class="proxy-box">
-        <div class="proxy-title">🛡️ Điểm danh hộ cho thành viên (Dành cho Tổ trưởng khi thành viên không đăng nhập được hoặc chưa có email Google)</div>
+        <div class="proxy-title">🛡️ Điểm danh hộ cho thành viên (Dành cho Tổ trưởng khi thành viên không đăng nhập được hoặc không có email Google)</div>
         <div class="checkin-controls">
           <select id="selectProxyGV">
             <option value="">-- Chọn thành viên cần điểm danh hộ --</option>
@@ -425,16 +513,15 @@
       </div>
     ` : '';
 
-    let hintText = 'Vui lòng đăng nhập bằng tài khoản Google nằm trong cột Email của bảng thành viên để kích hoạt nút xác nhận.';
+    let hintText = 'Vui lòng đăng nhập bằng tài khoản hợp lệ để kích hoạt nút xác nhận.';
     if (loggedInUser && !matchedMember) {
-      hintText = `Tài khoản ${loggedInUser.email} không trùng khớp với bất kỳ email nào trong danh sách thành viên.`;
+      hintText = `Tài khoản ${loggedInUser.email} không trùng khớp với danh sách thành viên.`;
     } else if (matchedMember && alreadyCheckedIn) {
       hintText = `Bạn (${escapeHtml(matchedMember.HoTen)}) đã xác nhận tham gia cuộc họp này.`;
     } else if (canCheckin) {
       hintText = `Đã xác thực tài khoản ${loggedInUser.email}. Nhấn nút bên cạnh để xác nhận tham gia họp.`;
     }
 
-    // Danh sách bình luận kèm nút Sửa / Xóa cho chủ comment (hoặc Tổ trưởng)
     const commentsHtml = blList.length > 0
       ? blList.map(bl => {
           const isOwner = matchedMember && String(bl.MaGV).trim() === String(matchedMember.MaGV).trim();
@@ -471,13 +558,14 @@
         }).join('')
       : '<div class="empty-comment">Chưa có ý kiến đóng góp nào từ thành viên trong buổi họp này.</div>';
 
+    // Bảng chuyên cần ẩn số điện thoại
     const rowsHtml = appData.thanhVien.map((tv, idx) => {
       const record = ddList.find(x => String(x.MaGV).trim() === String(tv.MaGV).trim());
       return `
         <tr>
           <td>${idx + 1}</td>
           <td><b>${escapeHtml(tv.HoTen)}</b></td>
-          <td>${escapeHtml(tv.Email || 'Chưa cập nhật')}<br><small>${escapeHtml(tv.SoDienThoai || '')}</small></td>
+          <td>${escapeHtml(tv.Email || 'Chưa cập nhật')}</td>
           <td>${record ? `<span class="badge-present">Có mặt (${escapeHtml(record.ThoiGian)})</span>` : `<span class="badge-absent">Vắng / Chưa xác nhận</span>`}</td>
         </tr>
       `;
@@ -485,12 +573,15 @@
 
     document.getElementById('notebookPage').innerHTML = `
       <div class="page-header">
-        <h1>${escapeHtml(ch.TieuDe)}</h1>
-        <div class="page-meta">
-          <span>📅 Ngày họp: <b>${formatDate(ch.NgayHop)}</b></span>
-          <span>👥 Sĩ số: <b>${ddList.length}/${appData.thanhVien.length}</b> thành viên</span>
-          <span>💬 Ý kiến đóng góp: <b>${blList.length}</b> lượt</span>
+        <div>
+          <h1>${escapeHtml(ch.TieuDe)}</h1>
+          <div class="page-meta">
+            <span>📅 Ngày họp: <b>${formatDate(ch.NgayHop)}</b></span>
+            <span>👥 Sĩ số: <b>${ddList.length}/${appData.thanhVien.length}</b> thành viên</span>
+            <span>💬 Ý kiến đóng góp: <b>${blList.length}</b> lượt</span>
+          </div>
         </div>
+        <button class="btn btn-excel" onclick="exportSingleMeetingExcel('${escapeHtml(ch.MaHop)}')">📊 Xuất biên bản Excel</button>
       </div>
 
       <div class="section">
@@ -498,7 +589,7 @@
         <div class="checkin-box">
           <div class="checkin-controls">
             <select id="selectGV" disabled>
-              <option value="">${matchedMember ? `${escapeHtml(matchedMember.HoTen)} (${escapeHtml(matchedMember.Email)})` : '-- Chưa khớp tài khoản email --'}</option>
+              <option value="">${matchedMember ? `${escapeHtml(matchedMember.HoTen)} (${escapeHtml(matchedMember.Email)})` : '-- Chưa khớp tài khoản --'}</option>
               ${optionsHtml}
             </select>
             <button class="btn btn-checkin" id="btnCheckin" onclick="submitCheckin()" ${canCheckin ? '' : 'disabled'}>
@@ -526,7 +617,7 @@
         <h3>4. Nội dung chi tiết & Ý kiến đóng góp của thành viên (${blList.length})</h3>
         <div class="comment-form">
           <textarea id="inComment" rows="3"
-            placeholder="${matchedMember ? `Nhập ý kiến đóng góp, thảo luận của ${escapeHtml(matchedMember.HoTen)}...` : 'Vui lòng đăng nhập đúng email thành viên trong tổ để gửi ý kiến đóng góp...'}"
+            placeholder="${matchedMember ? `Nhập ý kiến đóng góp, thảo luận của ${escapeHtml(matchedMember.HoTen)}...` : 'Vui lòng đăng nhập tài khoản thành viên trong tổ để gửi ý kiến đóng góp...'}"
             ${matchedMember ? '' : 'disabled'}></textarea>
           <div class="comment-form-footer">
             <span style="font-size:12px; color:#64748b;">
@@ -549,7 +640,7 @@
             <tr>
               <th>STT</th>
               <th>Họ và tên</th>
-              <th>Liên hệ</th>
+              <th>Email</th>
               <th>Trạng thái</th>
             </tr>
           </thead>
@@ -559,10 +650,17 @@
     `;
   }
 
+  function buildAuthPayload(extra) {
+    return Object.assign({
+      email: loggedInUser ? loggedInUser.email : '',
+      soDienThoai: loggedInUser ? loggedInUser.soDienThoai : ''
+    }, extra);
+  }
+
   async function submitCheckin() {
     const matchedMember = getMatchedMember();
     if (!loggedInUser || !matchedMember) {
-      return alert('Email Google của bạn không trùng khớp với danh sách thành viên!');
+      return alert('Tài khoản đăng nhập không trùng khớp với danh sách thành viên!');
     }
 
     const btn = document.getElementById('btnCheckin');
@@ -571,13 +669,12 @@
 
     const res = await fetch(SCRIPT_URL, {
       method: 'POST',
-      body: JSON.stringify({
+      body: JSON.stringify(buildAuthPayload({
         action: 'diemDanh',
         maHop: currentMaHop,
         maGV: matchedMember.MaGV,
-        hoTen: matchedMember.HoTen,
-        email: loggedInUser.email
-      })
+        hoTen: matchedMember.HoTen
+      }))
     });
     const result = await res.json();
     if (result.status === 'success') {
@@ -589,7 +686,6 @@
     }
   }
 
-  // Tổ trưởng điểm danh hộ
   async function submitProxyCheckin() {
     if (!isCurrentUserLeader() || !loggedInUser) {
       return alert('Chỉ tài khoản Tổ trưởng mới có quyền điểm danh hộ!');
@@ -606,12 +702,11 @@
 
     const res = await fetch(SCRIPT_URL, {
       method: 'POST',
-      body: JSON.stringify({
+      body: JSON.stringify(buildAuthPayload({
         action: 'diemDanhHo',
         maHop: currentMaHop,
-        maGV: maGV,
-        email: loggedInUser.email
-      })
+        maGV: maGV
+      }))
     });
     const result = await res.json();
     if (result.status === 'success') {
@@ -626,7 +721,7 @@
   async function submitComment() {
     const matchedMember = getMatchedMember();
     if (!loggedInUser || !matchedMember) {
-      return alert('Chỉ thành viên có email trong danh sách tổ mới được gửi ý kiến!');
+      return alert('Vui lòng đăng nhập hợp lệ trước khi gửi ý kiến!');
     }
 
     const inputEl = document.getElementById('inComment');
@@ -641,12 +736,11 @@
 
     const res = await fetch(SCRIPT_URL, {
       method: 'POST',
-      body: JSON.stringify({
+      body: JSON.stringify(buildAuthPayload({
         action: 'themBinhLuan',
         maHop: currentMaHop,
-        email: loggedInUser.email,
         noiDung: noiDung
-      })
+      }))
     });
     const result = await res.json();
     if (result.status === 'success') {
@@ -669,19 +763,18 @@
   }
 
   async function saveEditComment(maBL) {
-    if (!loggedInUser) return alert('Vui lòng đăng nhập Google!');
+    if (!loggedInUser) return alert('Vui lòng đăng nhập!');
     const textarea = document.getElementById('editTextarea_' + maBL);
     const noiDungMoi = textarea ? textarea.value.trim() : '';
     if (!noiDungMoi) return alert('Nội dung bình luận không được để trống!');
 
     const res = await fetch(SCRIPT_URL, {
       method: 'POST',
-      body: JSON.stringify({
+      body: JSON.stringify(buildAuthPayload({
         action: 'suaBinhLuan',
         maBL: maBL,
-        email: loggedInUser.email,
         noiDung: noiDungMoi
-      })
+      }))
     });
     const result = await res.json();
     if (result.status === 'success') {
@@ -693,16 +786,15 @@
   }
 
   async function deleteComment(maBL) {
-    if (!loggedInUser) return alert('Vui lòng đăng nhập Google!');
+    if (!loggedInUser) return alert('Vui lòng đăng nhập!');
     if (!confirm('Bạn có chắc muốn xóa bình luận này không?')) return;
 
     const res = await fetch(SCRIPT_URL, {
       method: 'POST',
-      body: JSON.stringify({
+      body: JSON.stringify(buildAuthPayload({
         action: 'xoaBinhLuan',
-        maBL: maBL,
-        email: loggedInUser.email
-      })
+        maBL: maBL
+      }))
     });
     const result = await res.json();
     if (result.status === 'success') {
@@ -750,12 +842,15 @@
     }).join('');
 
     document.getElementById('notebookPage').innerHTML = `
-      <div class="page-header" style="display:flex; justify-content:space-between; align-items:center;">
+      <div class="page-header">
         <div>
           <h1>BÁO CÁO TỔNG HỢP SINH HOẠT CHUYÊN MÔN</h1>
           <div class="page-meta">Tổng số cuộc họp đã tổ chức: <b>${appData.cuocHop.length}</b></div>
         </div>
-        <button class="btn btn-primary" style="flex:none;" onclick="window.print()">🖨️ In / Xuất PDF</button>
+        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+          <button class="btn btn-excel" onclick="exportAllMeetingsExcel()">📊 Xuất tất cả cuộc họp (Excel)</button>
+          <button class="btn btn-primary" style="flex:none;" onclick="window.print()">🖨️ In / PDF</button>
+        </div>
       </div>
       <table>
         <thead>
@@ -772,6 +867,149 @@
         <tbody>${reportRows}</tbody>
       </table>
     `;
+  }
+
+  // Xuất file Excel (.xls) cho từng cuộc họp chi tiết
+  function exportSingleMeetingExcel(maHop) {
+    const ch = appData.cuocHop.find(x => x.MaHop === maHop);
+    if (!ch) return;
+
+    const ddList = appData.diemDanh.filter(x => x.MaHop === maHop);
+    const blList = appData.binhLuan.filter(x => x.MaHop === maHop);
+    const presentIds = ddList.map(x => String(x.MaGV).trim());
+
+    const attendanceRows = appData.thanhVien.map((tv, idx) => {
+      const rec = ddList.find(x => String(x.MaGV).trim() === String(tv.MaGV).trim());
+      return `
+        <tr>
+          <td>${idx + 1}</td>
+          <td>${escapeHtml(tv.HoTen)}</td>
+          <td>${escapeHtml(tv.Email || '')}</td>
+          <td>${rec ? 'Có mặt' : 'Vắng'}</td>
+          <td>${rec ? escapeHtml(rec.ThoiGian) : ''}</td>
+        </tr>
+      `;
+    }).join('');
+
+    const commentRows = blList.length > 0
+      ? blList.map((bl, idx) => `
+          <tr>
+            <td>${idx + 1}</td>
+            <td>${escapeHtml(bl.HoTen)}</td>
+            <td>${escapeHtml(bl.ThoiGian)}</td>
+            <td>${escapeHtml(bl.NoiDung)}</td>
+          </tr>
+        `).join('')
+      : `<tr><td colspan="4">Không có ý kiến đóng góp</td></tr>`;
+
+    const htmlExcel = `
+      <html xmlns:o="urn:schemas-microsoft-com:office:office"
+            xmlns:x="urn:schemas-microsoft-com:office:excel"
+            xmlns="http://www.w3.org/TR/REC-html40">
+      <head><meta charset="UTF-8"></head>
+      <body>
+        <h2>BIÊN BẢN CUỘC HỌP TỔ CHUYÊN MÔN TIN - NGOẠI NGỮ</h2>
+        <p><b>Tiêu đề:</b> ${escapeHtml(ch.TieuDe)}</p>
+        <p><b>Ngày họp:</b> ${formatDate(ch.NgayHop)}</p>
+        <p><b>Sĩ số tham gia:</b> ${presentIds.length}/${appData.thanhVien.length}</p>
+        <p><b>Nội dung chính:</b> ${escapeHtml(ch.NoiDung || '')}</p>
+        <p><b>Tài nguyên:</b> ${escapeHtml(ch.TaiNguyen || '')}</p>
+
+        <h3>I. DANH SÁCH CHUYÊN CẦN</h3>
+        <table border="1" cellspacing="0" cellpadding="6">
+          <thead>
+            <tr><th>STT</th><th>Họ và tên</th><th>Email</th><th>Trạng thái</th><th>Thời gian ghi nhận</th></tr>
+          </thead>
+          <tbody>${attendanceRows}</tbody>
+        </table>
+
+        <h3>II. Ý KIẾN ĐÓNG GÓP CỦA THÀNH VIÊN</h3>
+        <table border="1" cellspacing="0" cellpadding="6">
+          <thead>
+            <tr><th>STT</th><th>Thành viên</th><th>Thời gian</th><th>Nội dung ý kiến</th></tr>
+          </thead>
+          <tbody>${commentRows}</tbody>
+        </table>
+      </body>
+      </html>
+    `;
+
+    downloadExcelFile(htmlExcel, `Bien_Ban_${ch.MaHop || 'Cuoc_Hop'}.xls`);
+  }
+
+  // Xuất file Excel (.xls) cho tất cả cuộc họp
+  function exportAllMeetingsExcel() {
+    const totalMembers = appData.thanhVien.length;
+
+    const allRows = appData.cuocHop.map((ch, idx) => {
+      const ddList = appData.diemDanh.filter(x => x.MaHop === ch.MaHop);
+      const blList = appData.binhLuan.filter(x => x.MaHop === ch.MaHop);
+      const presentIds = ddList.map(x => String(x.MaGV).trim());
+      const absentNames = appData.thanhVien
+        .filter(tv => !presentIds.includes(String(tv.MaGV).trim()))
+        .map(tv => tv.HoTen)
+        .join(', ');
+
+      const commentsText = blList.map(b => `[${b.HoTen} - ${b.ThoiGian}]: ${b.NoiDung}`).join(' | ');
+
+      return `
+        <tr>
+          <td>${idx + 1}</td>
+          <td>${escapeHtml(ch.MaHop)}</td>
+          <td>${escapeHtml(ch.TieuDe)}</td>
+          <td>${formatDate(ch.NgayHop)}</td>
+          <td>${ddList.length}/${totalMembers}</td>
+          <td>${escapeHtml(absentNames || 'Đủ sĩ số')}</td>
+          <td>${escapeHtml(ch.NoiDung || '')}</td>
+          <td>${escapeHtml(ch.TaiNguyen || '')}</td>
+          <td>${escapeHtml(commentsText)}</td>
+        </tr>
+      `;
+    }).join('');
+
+    const htmlExcel = `
+      <html xmlns:o="urn:schemas-microsoft-com:office:office"
+            xmlns:x="urn:schemas-microsoft-com:office:excel"
+            xmlns="http://www.w3.org/TR/REC-html40">
+      <head><meta charset="UTF-8"></head>
+      <body>
+        <h2>BÁO CÁO TỔNG HỢP TẤT CẢ CUỘC HỌP TỔ CHUYÊN MÔN TIN - NGOẠI NGỮ</h2>
+        <p><b>Tổng số cuộc họp:</b> ${appData.cuocHop.length} | <b>Tổng số thành viên tổ:</b> ${totalMembers}</p>
+        <table border="1" cellspacing="0" cellpadding="6">
+          <thead>
+            <tr>
+              <th>STT</th>
+              <th>Mã họp</th>
+              <th>Tiêu đề cuộc họp</th>
+              <th>Ngày họp</th>
+              <th>Sĩ số tham gia</th>
+              <th>Vắng mặt</th>
+              <th>Nội dung chính</th>
+              <th>Tài nguyên</th>
+              <th>Ý kiến đóng góp của thành viên</th>
+            </tr>
+          </thead>
+          <tbody>${allRows}</tbody>
+        </table>
+      </body>
+      </html>
+    `;
+
+    downloadExcelFile(htmlExcel, `Tong_Hop_Tat_Ca_Cuoc_Hop.xls`);
+  }
+
+  function downloadExcelFile(htmlContent, fileName) {
+    const blob = new Blob(['\ufeff' + htmlContent], {
+      type: 'application/vnd.ms-excel;charset=utf-8;'
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   }
 
   function openModal() {
@@ -799,11 +1037,10 @@
 
     const res = await fetch(SCRIPT_URL, {
       method: 'POST',
-      body: JSON.stringify({
+      body: JSON.stringify(buildAuthPayload({
         action: 'themCuocHop',
-        email: loggedInUser.email,
         tieuDe, ngayHop, noiDung, taiNguyen
-      })
+      }))
     });
     const result = await res.json();
     if (result.status === 'success') {
