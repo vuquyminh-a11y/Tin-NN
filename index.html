@@ -6,6 +6,7 @@
   <meta name="author" content="VU THI QUY - GDTX HOC MON" />
   <title>Sổ Họp Tổ Chuyên Môn Tin - Ngoại Ngữ</title>
   <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <style>
     :root {
       --primary: #2563eb;
@@ -45,6 +46,8 @@
     .btn-members:hover:not(:disabled) { background: #0369a1; }
     .btn-excel { background: #0d9488; color: white; }
     .btn-excel:hover:not(:disabled) { background: #0f766e; }
+    .btn-qr { background: #7c3aed; color: white; }
+    .btn-qr:hover:not(:disabled) { background: #6d28d9; }
     .btn-edit { background: #f59e0b; color: white; }
     .btn-edit:hover:not(:disabled) { background: #d97706; }
     .btn-danger { background: var(--danger); color: white; }
@@ -162,6 +165,16 @@
     .badge-absent { background: #fee2e2; color: var(--danger); padding: 4px 8px; border-radius: 4px; font-weight: 600; font-size: 12px; }
     .badge-leader { background: #dbeafe; color: #1e40af; padding: 3px 7px; border-radius: 4px; font-weight: 700; font-size: 11px; }
 
+    /* Khu vực hiển thị QR */
+    .qr-wrapper {
+      display: flex; flex-direction: column; align-items: center; gap: 12px;
+      padding: 16px; background: #f8fafc; border: 1px solid var(--border); border-radius: 8px;
+    }
+    .qr-link-box {
+      width: 100%; font-size: 12px; color: #334155; background: #fff;
+      border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; word-break: break-all;
+    }
+
     /* Modal đồng bộ */
     .modal {
       display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5);
@@ -215,6 +228,22 @@
 
       <div id="notebookPage">
         <div class="loading">Đang kết nối dữ liệu Google Sheets...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Popup hiển thị mã QR điểm danh nhanh -->
+  <div class="modal" id="qrCodeModal">
+    <div class="modal-content">
+      <h3 style="margin:0; color:#5b21b6;">📱 Mã QR truy cập & điểm danh nhanh</h3>
+      <p style="margin:0; font-size:13px; color:#64748b;" id="qrMeetingSubtitle"></p>
+      <div class="qr-wrapper">
+        <div id="qrcodeContainer"></div>
+        <div class="qr-link-box" id="qrUrlText"></div>
+      </div>
+      <div style="display:flex; gap:10px; justify-content: flex-end; margin-top: 6px; flex-wrap:wrap;">
+        <button class="btn btn-qr" onclick="copyQrLink()">📋 Sao chép link</button>
+        <button class="btn" onclick="closeQrModal()">Đóng</button>
       </div>
     </div>
   </div>
@@ -338,13 +367,91 @@
 
 <script>
   // DÁN URL APPS SCRIPT VÀ GOOGLE CLIENT ID CỦA BẠN VÀO DƯỚI ĐÂY
-  const SCRIPT_URL ='https://script.google.com/macros/s/AKfycbzdQCs0i5GZf246e_JUJ_2vOn5rsk9K1roQhHsOnfgND95SXRRVNDM-t47hehIqLpdk/exec;
+  const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzdQCs0i5GZf246e_JUJ_2vOn5rsk9K1roQhHsOnfgND95SXRRVNDM-t47hehIqLpdk/exec';
   const GOOGLE_CLIENT_ID = '787324131420-ccvkdfvfd7jeitdg85p2mcstl8hrfh11.apps.googleusercontent.com';
+
   let appData = { thanhVien: [], cuocHop: [], diemDanh: [], binhLuan: [] };
   let currentMaHop = null;
   let loggedInUser = null;
   let editingCommentId = null;
   let pendingDeleteMemberId = null;
+  let currentQrUrl = '';
+
+  function getMeetingParamFromUrl() {
+    const params = new URLSearchParams(window.location.search);
+    return (params.get('meeting') || '').trim();
+  }
+
+  function syncMeetingParamToUrl(maHop) {
+    try {
+      const url = new URL(window.location.href);
+      if (maHop) {
+        url.searchParams.set('meeting', maHop);
+      } else {
+        url.searchParams.delete('meeting');
+      }
+      window.history.replaceState({}, '', url.toString());
+    } catch (e) {}
+  }
+
+  function buildMeetingShareUrl(maHop) {
+    const url = new URL(window.location.href);
+    url.searchParams.set('meeting', maHop);
+    return url.toString();
+  }
+
+  // Hiển thị popup mã QR điểm danh nhanh cho cuộc họp
+  function openQrModal(maHop) {
+    const ch = appData.cuocHop.find(x => String(x.MaHop).trim() === String(maHop).trim());
+    if (!ch) return;
+
+    currentQrUrl = buildMeetingShareUrl(ch.MaHop);
+    document.getElementById('qrMeetingSubtitle').innerHTML =
+      `<b>${escapeHtml(ch.TieuDe)}</b> (${formatDate(ch.NgayHop)}) — Quét mã bằng camera điện thoại để mở thẳng trang điểm danh.`;
+    document.getElementById('qrUrlText').innerText = currentQrUrl;
+
+    const container = document.getElementById('qrcodeContainer');
+    container.innerHTML = '';
+    if (window.QRCode) {
+      new QRCode(container, {
+        text: currentQrUrl,
+        width: 210,
+        height: 210,
+        colorDark: '#0f172a',
+        colorLight: '#ffffff',
+        correctLevel: QRCode.CorrectLevel.M
+      });
+    } else {
+      container.innerHTML = '<div style="color:#dc2626; font-size:13px;">Không tải được thư viện QRCode. Vui lòng dùng link bên dưới.</div>';
+    }
+
+    document.getElementById('qrCodeModal').style.display = 'flex';
+  }
+
+  function closeQrModal() {
+    document.getElementById('qrCodeModal').style.display = 'none';
+  }
+
+  function copyQrLink() {
+    if (!currentQrUrl) return;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(currentQrUrl).then(() => {
+        alert('Đã sao chép đường link điểm danh nhanh của cuộc họp!');
+      }).catch(() => fallbackCopyText(currentQrUrl));
+    } else {
+      fallbackCopyText(currentQrUrl);
+    }
+  }
+
+  function fallbackCopyText(text) {
+    const temp = document.createElement('textarea');
+    temp.value = text;
+    document.body.appendChild(temp);
+    temp.select();
+    document.execCommand('copy');
+    document.body.removeChild(temp);
+    alert('Đã sao chép đường link điểm danh nhanh của cuộc họp!');
+  }
 
   function parseJwt(token) {
     const base64Url = token.split('.')[1];
@@ -541,8 +648,10 @@
       }
 
       if (appData.cuocHop.length > 0) {
-        const exists = appData.cuocHop.some(x => x.MaHop === currentMaHop);
-        const target = exists ? currentMaHop : appData.cuocHop[appData.cuocHop.length - 1].MaHop;
+        const urlMeetingId = getMeetingParamFromUrl();
+        const candidateId = currentMaHop || urlMeetingId;
+        const exists = appData.cuocHop.some(x => String(x.MaHop).trim() === String(candidateId).trim());
+        const target = exists ? candidateId : appData.cuocHop[appData.cuocHop.length - 1].MaHop;
         selectMeeting(target);
       } else {
         currentMaHop = null;
@@ -573,12 +682,13 @@
 
   function selectMeeting(maHop) {
     currentMaHop = maHop;
+    syncMeetingParamToUrl(maHop);
     renderSidebar();
-    const ch = appData.cuocHop.find(x => x.MaHop === maHop);
+    const ch = appData.cuocHop.find(x => String(x.MaHop).trim() === String(maHop).trim());
     if (!ch) return;
 
-    const ddList = appData.diemDanh.filter(x => x.MaHop === maHop);
-    const blList = appData.binhLuan.filter(x => x.MaHop === maHop);
+    const ddList = appData.diemDanh.filter(x => String(x.MaHop).trim() === String(maHop).trim());
+    const blList = appData.binhLuan.filter(x => String(x.MaHop).trim() === String(maHop).trim());
     const presentIds = ddList.map(x => String(x.MaGV).trim());
     const matchedMember = getMatchedMember();
     const isLeader = isCurrentUserLeader();
@@ -689,6 +799,7 @@
           </div>
         </div>
         <div class="header-btns">
+          <button class="btn btn-qr" onclick="openQrModal('${escapeHtml(ch.MaHop)}')">📱 Mã QR điểm danh</button>
           ${leaderMeetingBtns}
           <button class="btn btn-excel" onclick="exportSingleMeetingExcel('${escapeHtml(ch.MaHop)}')">📊 Xuất biên bản Excel</button>
         </div>
@@ -921,13 +1032,14 @@
     }
 
     currentMaHop = null;
+    syncMeetingParamToUrl('');
     editingCommentId = null;
     renderSidebar();
     const totalMembers = appData.thanhVien.length;
 
     const reportRows = appData.cuocHop.map((ch, idx) => {
-      const ddList = appData.diemDanh.filter(x => x.MaHop === ch.MaHop);
-      const blList = appData.binhLuan.filter(x => x.MaHop === ch.MaHop);
+      const ddList = appData.diemDanh.filter(x => String(x.MaHop).trim() === String(ch.MaHop).trim());
+      const blList = appData.binhLuan.filter(x => String(x.MaHop).trim() === String(ch.MaHop).trim());
       const presentIds = ddList.map(x => String(x.MaGV).trim());
       const absentNames = appData.thanhVien
         .filter(tv => !presentIds.includes(String(tv.MaGV).trim()))
@@ -979,7 +1091,6 @@
     `;
   }
 
-  // Popup Thêm / Sửa cuộc họp
   function openMeetingModal() {
     if (!isCurrentUserLeader()) {
       return alert('Chỉ tài khoản Tổ trưởng mới có quyền tạo trang họp mới!');
@@ -1053,7 +1164,6 @@
     }
   }
 
-  // Popup Xóa cuộc họp
   function openDeleteMeetingModal(maHop) {
     if (!isCurrentUserLeader()) {
       return alert('Chỉ tài khoản Tổ trưởng mới có quyền xóa cuộc họp!');
@@ -1099,7 +1209,6 @@
     }
   }
 
-  // Popup Quản lý thành viên: Thêm / Sửa / Xóa
   function openMembersManagerModal() {
     if (!isCurrentUserLeader()) {
       return alert('Chỉ tài khoản Tổ trưởng mới có quyền quản lý thành viên!');
@@ -1266,11 +1375,11 @@
   }
 
   function exportSingleMeetingExcel(maHop) {
-    const ch = appData.cuocHop.find(x => x.MaHop === maHop);
+    const ch = appData.cuocHop.find(x => String(x.MaHop).trim() === String(maHop).trim());
     if (!ch) return;
 
-    const ddList = appData.diemDanh.filter(x => x.MaHop === maHop);
-    const blList = appData.binhLuan.filter(x => x.MaHop === maHop);
+    const ddList = appData.diemDanh.filter(x => String(x.MaHop).trim() === String(maHop).trim());
+    const blList = appData.binhLuan.filter(x => String(x.MaHop).trim() === String(maHop).trim());
     const presentIds = ddList.map(x => String(x.MaGV).trim());
 
     const attendanceRows = appData.thanhVien.map((tv, idx) => {
@@ -1336,8 +1445,8 @@
     const totalMembers = appData.thanhVien.length;
 
     const allRows = appData.cuocHop.map((ch, idx) => {
-      const ddList = appData.diemDanh.filter(x => x.MaHop === ch.MaHop);
-      const blList = appData.binhLuan.filter(x => x.MaHop === ch.MaHop);
+      const ddList = appData.diemDanh.filter(x => String(x.MaHop).trim() === String(ch.MaHop).trim());
+      const blList = appData.binhLuan.filter(x => String(x.MaHop).trim() === String(ch.MaHop).trim());
       const presentIds = ddList.map(x => String(x.MaGV).trim());
       const absentNames = appData.thanhVien
         .filter(tv => !presentIds.includes(String(tv.MaGV).trim()))
@@ -1424,6 +1533,10 @@
   }
 
   window.onload = () => {
+    const initialMeeting = getMeetingParamFromUrl();
+    if (initialMeeting) {
+      currentMaHop = initialMeeting;
+    }
     initGoogleSignIn();
     loadData();
   };
