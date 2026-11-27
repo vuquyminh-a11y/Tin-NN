@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="author" content="VU THI QUY - GDTX HOC MON" />
+    <meta name="author" content="VU THI QUY - GDTX HOC MON" />
   <title>Sổ Họp Tổ Chuyên Môn Tin - Ngoại Ngữ</title>
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
@@ -339,7 +339,7 @@
       <input type="email" id="inEmail" placeholder="Nhập địa chỉ email">
       <div class="field-label">Số điện thoại (dùng làm mật khẩu khi không dùng Gmail)</div>
       <input type="text" id="inSoDienThoai" placeholder="Nhập số điện thoại">
-      <div class="field-label">Vai trò trong tổ</div>
+      <div class="field-label">Vai trò của thành viên trong tổ</div>
       <select id="inVaiTro">
         <option value="ThanhVien">Thành viên (ThanhVien)</option>
         <option value="ToTruong">Tổ trưởng (ToTruong)</option>
@@ -372,10 +372,36 @@
 
   let appData = { thanhVien: [], cuocHop: [], diemDanh: [], binhLuan: [] };
   let currentMaHop = null;
-  let loggedInUser = null;
+  let loggedInSession = null; // { email, soDienThoai, name, authType: 'google' | 'credentials' }
   let editingCommentId = null;
   let pendingDeleteMemberId = null;
   let currentQrUrl = '';
+
+  function isLeaderRoleText(vaiTro) {
+    const r = String(vaiTro || '').trim().toLowerCase();
+    return r === 'totruong' || r === 'tổ trưởng';
+  }
+
+  // Lấy bản ghi thành viên tương ứng với tài khoản ĐANG ĐĂNG NHẬP
+  function getLoggedInMember() {
+    if (!loggedInSession || !loggedInSession.email) return null;
+    return appData.thanhVien.find(tv => {
+      const dbEmail = String(tv.Email || '').trim().toLowerCase();
+      if (dbEmail !== loggedInSession.email) return false;
+      if (loggedInSession.authType === 'credentials') {
+        const dbPhone = normalizePhone(tv.SoDienThoai);
+        return dbPhone && dbPhone === normalizePhone(loggedInSession.soDienThoai);
+      }
+      return true;
+    }) || null;
+  }
+
+  // Kiểm tra vai trò của CHÍNH NGƯỜI ĐANG ĐĂNG NHẬP có phải Tổ trưởng không
+  function isLoggedInUserLeader() {
+    const currentActor = getLoggedInMember();
+    if (!currentActor) return false;
+    return isLeaderRoleText(currentActor.VaiTro);
+  }
 
   function getMeetingParamFromUrl() {
     const params = new URLSearchParams(window.location.search);
@@ -400,7 +426,6 @@
     return url.toString();
   }
 
-  // Hiển thị popup mã QR điểm danh nhanh cho cuộc họp
   function openQrModal(maHop) {
     const ch = appData.cuocHop.find(x => String(x.MaHop).trim() === String(maHop).trim());
     if (!ch) return;
@@ -483,7 +508,7 @@
       client_id: GOOGLE_CLIENT_ID,
       callback: (response) => {
         const payload = parseJwt(response.credential);
-        loggedInUser = {
+        loggedInSession = {
           email: (payload.email || '').trim().toLowerCase(),
           soDienThoai: '',
           name: payload.name || payload.email,
@@ -533,7 +558,7 @@
       return alert('Tên đăng nhập (email) hoặc mật khẩu (số điện thoại) không khớp với danh sách thành viên!');
     }
 
-    loggedInUser = {
+    loggedInSession = {
       email: emailInput,
       soDienThoai: phoneInput,
       name: found.HoTen,
@@ -551,7 +576,7 @@
   }
 
   function logoutUser() {
-    loggedInUser = null;
+    loggedInSession = null;
     editingCommentId = null;
     if (window.google && google.accounts && google.accounts.id) {
       google.accounts.id.disableAutoSelect();
@@ -564,26 +589,6 @@
     }
   }
 
-  function getMatchedMember() {
-    if (!loggedInUser || !loggedInUser.email) return null;
-    return appData.thanhVien.find(tv => {
-      const dbEmail = String(tv.Email || '').trim().toLowerCase();
-      if (dbEmail !== loggedInUser.email) return false;
-      if (loggedInUser.authType === 'credentials') {
-        const dbPhone = normalizePhone(tv.SoDienThoai);
-        return dbPhone && dbPhone === normalizePhone(loggedInUser.soDienThoai);
-      }
-      return true;
-    }) || null;
-  }
-
-  function isCurrentUserLeader() {
-    const matched = getMatchedMember();
-    if (!matched) return false;
-    const role = String(matched.VaiTro || '').trim().toLowerCase();
-    return role === 'totruong' || role === 'tổ trưởng';
-  }
-
   function updatePermissionsUI() {
     const statusEl = document.getElementById('authStatusText');
     const signInBtnEl = document.getElementById('googleSignInBtn');
@@ -592,7 +597,7 @@
     const leaderActionsEl = document.getElementById('leaderActions');
     const memberNoticeEl = document.getElementById('memberNotice');
 
-    if (!loggedInUser) {
+    if (!loggedInSession) {
       statusEl.innerHTML = 'Bạn chưa đăng nhập. Vui lòng đăng nhập bằng Google hoặc tài khoản Email + Số điện thoại.';
       signInBtnEl.style.display = 'block';
       altLoginBtnEl.style.display = 'inline-block';
@@ -606,25 +611,27 @@
     altLoginBtnEl.style.display = 'none';
     logoutBtnEl.style.display = 'inline-block';
 
-    const matched = getMatchedMember();
-    const isLeader = isCurrentUserLeader();
+    const actorMember = getLoggedInMember();
+    const actorIsLeader = isLoggedInUserLeader();
 
-    leaderActionsEl.style.display = isLeader ? 'flex' : 'none';
-    memberNoticeEl.style.display = isLeader ? 'none' : 'block';
+    leaderActionsEl.style.display = actorIsLeader ? 'flex' : 'none';
+    memberNoticeEl.style.display = actorIsLeader ? 'none' : 'block';
 
-    const methodText = loggedInUser.authType === 'credentials'
+    const methodText = loggedInSession.authType === 'credentials'
       ? 'tài khoản Email & Số điện thoại'
       : 'địa chỉ email Google';
 
-    if (matched) {
-      const roleTag = isLeader ? '<span class="role-badge">Tổ trưởng</span>' : '<span class="role-badge">Thành viên</span>';
+    if (actorMember) {
+      const roleTag = actorIsLeader
+        ? '<span class="role-badge">Tổ trưởng</span>'
+        : '<span class="role-badge">Thành viên</span>';
       statusEl.innerHTML = `
-        Bạn đang đăng nhập bằng ${methodText}: <b>${escapeHtml(loggedInUser.email)}</b> —
-        <span class="auth-ok">Khớp với: ${escapeHtml(matched.HoTen)}</span> ${roleTag}
+        Bạn đang đăng nhập bằng ${methodText}: <b>${escapeHtml(loggedInSession.email)}</b> —
+        <span class="auth-ok">Khớp với: ${escapeHtml(actorMember.HoTen)}</span> ${roleTag}
       `;
     } else {
       statusEl.innerHTML = `
-        Bạn đang đăng nhập bằng ${methodText}: <b>${escapeHtml(loggedInUser.email)}</b> —
+        Bạn đang đăng nhập bằng ${methodText}: <b>${escapeHtml(loggedInSession.email)}</b> —
         <span class="auth-warn">Tài khoản chưa khớp với danh sách thành viên tổ</span>. Quyền thao tác đang bị khóa.
       `;
     }
@@ -690,19 +697,19 @@
     const ddList = appData.diemDanh.filter(x => String(x.MaHop).trim() === String(maHop).trim());
     const blList = appData.binhLuan.filter(x => String(x.MaHop).trim() === String(maHop).trim());
     const presentIds = ddList.map(x => String(x.MaGV).trim());
-    const matchedMember = getMatchedMember();
-    const isLeader = isCurrentUserLeader();
-    const alreadyCheckedIn = matchedMember ? presentIds.includes(String(matchedMember.MaGV).trim()) : false;
-    const canCheckin = Boolean(matchedMember && !alreadyCheckedIn);
+    const actorMember = getLoggedInMember();
+    const actorIsLeader = isLoggedInUserLeader();
+    const alreadyCheckedIn = actorMember ? presentIds.includes(String(actorMember.MaGV).trim()) : false;
+    const canCheckin = Boolean(actorMember && !alreadyCheckedIn);
 
-    const leaderMeetingBtns = isLeader ? `
+    const leaderMeetingBtns = actorIsLeader ? `
       <button class="btn btn-edit" onclick="openEditMeetingModal('${escapeHtml(ch.MaHop)}')">✏️ Sửa cuộc họp</button>
       <button class="btn btn-danger" onclick="openDeleteMeetingModal('${escapeHtml(ch.MaHop)}')">🗑️ Xóa cuộc họp</button>
     ` : '';
 
     const optionsHtml = appData.thanhVien.map(tv => {
       const isChecked = presentIds.includes(String(tv.MaGV).trim());
-      const isCurrentUser = matchedMember && String(matchedMember.MaGV).trim() === String(tv.MaGV).trim();
+      const isCurrentUser = actorMember && String(actorMember.MaGV).trim() === String(tv.MaGV).trim();
       return `<option value="${escapeHtml(tv.MaGV)}" ${isCurrentUser ? 'selected' : ''} disabled>
         ${escapeHtml(tv.HoTen)} (${escapeHtml(tv.Email || 'Không có email')}) ${isChecked ? '✓ Đã điểm danh' : ''}
       </option>`;
@@ -716,7 +723,7 @@
       </option>`;
     }).join('');
 
-    const proxyBoxHtml = isLeader ? `
+    const proxyBoxHtml = actorIsLeader ? `
       <div class="proxy-box">
         <div class="proxy-title">🛡️ Điểm danh hộ cho thành viên (Dành cho Tổ trưởng khi thành viên không đăng nhập được hoặc không có email Google)</div>
         <div class="checkin-controls">
@@ -732,18 +739,18 @@
     ` : '';
 
     let hintText = 'Vui lòng đăng nhập bằng tài khoản hợp lệ để kích hoạt nút xác nhận.';
-    if (loggedInUser && !matchedMember) {
-      hintText = `Tài khoản ${loggedInUser.email} không trùng khớp với danh sách thành viên.`;
-    } else if (matchedMember && alreadyCheckedIn) {
-      hintText = `Bạn (${escapeHtml(matchedMember.HoTen)}) đã xác nhận tham gia cuộc họp này.`;
+    if (loggedInSession && !actorMember) {
+      hintText = `Tài khoản ${loggedInSession.email} không trùng khớp với danh sách thành viên.`;
+    } else if (actorMember && alreadyCheckedIn) {
+      hintText = `Bạn (${escapeHtml(actorMember.HoTen)}) đã xác nhận tham gia cuộc họp này.`;
     } else if (canCheckin) {
-      hintText = `Đã xác thực tài khoản ${loggedInUser.email}. Nhấn nút bên cạnh để xác nhận tham gia họp.`;
+      hintText = `Đã xác thực tài khoản ${loggedInSession.email}. Nhấn nút bên cạnh để xác nhận tham gia họp.`;
     }
 
     const commentsHtml = blList.length > 0
       ? blList.map(bl => {
-          const isOwner = matchedMember && String(bl.MaGV).trim() === String(matchedMember.MaGV).trim();
-          const canModify = Boolean(isOwner || isLeader);
+          const isOwner = actorMember && String(bl.MaGV).trim() === String(actorMember.MaGV).trim();
+          const canModify = Boolean(isOwner || actorIsLeader);
           const isEditing = editingCommentId === bl.MaBL;
 
           const actionButtons = canModify ? `
@@ -810,7 +817,7 @@
         <div class="checkin-box">
           <div class="checkin-controls">
             <select id="selectGV" disabled>
-              <option value="">${matchedMember ? `${escapeHtml(matchedMember.HoTen)} (${escapeHtml(matchedMember.Email)})` : '-- Chưa khớp tài khoản --'}</option>
+              <option value="">${actorMember ? `${escapeHtml(actorMember.HoTen)} (${escapeHtml(actorMember.Email)})` : '-- Chưa khớp tài khoản --'}</option>
               ${optionsHtml}
             </select>
             <button class="btn btn-checkin" id="btnCheckin" onclick="submitCheckin()" ${canCheckin ? '' : 'disabled'}>
@@ -838,13 +845,13 @@
         <h3>4. Nội dung chi tiết & Ý kiến đóng góp của thành viên (${blList.length})</h3>
         <div class="comment-form">
           <textarea id="inComment" rows="3"
-            placeholder="${matchedMember ? `Nhập ý kiến đóng góp, thảo luận của ${escapeHtml(matchedMember.HoTen)}...` : 'Vui lòng đăng nhập tài khoản thành viên trong tổ để gửi ý kiến đóng góp...'}"
-            ${matchedMember ? '' : 'disabled'}></textarea>
+            placeholder="${actorMember ? `Nhập ý kiến đóng góp, thảo luận của ${escapeHtml(actorMember.HoTen)}...` : 'Vui lòng đăng nhập tài khoản thành viên trong tổ để gửi ý kiến đóng góp...'}"
+            ${actorMember ? '' : 'disabled'}></textarea>
           <div class="comment-form-footer">
             <span style="font-size:12px; color:#64748b;">
-              ${matchedMember ? `Gửi với tư cách: <b>${escapeHtml(matchedMember.HoTen)}</b>` : 'Chỉ thành viên trong danh sách mới được gửi bình luận'}
+              ${actorMember ? `Gửi với tư cách: <b>${escapeHtml(actorMember.HoTen)}</b>` : 'Chỉ thành viên trong danh sách mới được gửi bình luận'}
             </span>
-            <button class="btn btn-primary" style="flex:none;" id="btnSendComment" onclick="submitComment()" ${matchedMember ? '' : 'disabled'}>
+            <button class="btn btn-primary" style="flex:none;" id="btnSendComment" onclick="submitComment()" ${actorMember ? '' : 'disabled'}>
               Gửi ý kiến đóng góp
             </button>
           </div>
@@ -873,14 +880,14 @@
 
   function buildAuthPayload(extra) {
     return Object.assign({
-      email: loggedInUser ? loggedInUser.email : '',
-      soDienThoai: loggedInUser ? loggedInUser.soDienThoai : ''
+      email: loggedInSession ? loggedInSession.email : '',
+      soDienThoai: loggedInSession ? loggedInSession.soDienThoai : ''
     }, extra);
   }
 
   async function submitCheckin() {
-    const matchedMember = getMatchedMember();
-    if (!loggedInUser || !matchedMember) {
+    const actorMember = getLoggedInMember();
+    if (!loggedInSession || !actorMember) {
       return alert('Tài khoản đăng nhập không trùng khớp với danh sách thành viên!');
     }
 
@@ -893,8 +900,8 @@
       body: JSON.stringify(buildAuthPayload({
         action: 'diemDanh',
         maHop: currentMaHop,
-        maGV: matchedMember.MaGV,
-        hoTen: matchedMember.HoTen
+        maGV: actorMember.MaGV,
+        hoTen: actorMember.HoTen
       }))
     });
     const result = await res.json();
@@ -908,8 +915,8 @@
   }
 
   async function submitProxyCheckin() {
-    if (!isCurrentUserLeader() || !loggedInUser) {
-      return alert('Chỉ tài khoản Tổ trưởng mới có quyền điểm danh hộ!');
+    if (!isLoggedInUserLeader() || !loggedInSession) {
+      return alert('Chỉ tài khoản Tổ trưởng đang đăng nhập mới có quyền điểm danh hộ!');
     }
 
     const maGV = document.getElementById('selectProxyGV').value;
@@ -940,8 +947,8 @@
   }
 
   async function submitComment() {
-    const matchedMember = getMatchedMember();
-    if (!loggedInUser || !matchedMember) {
+    const actorMember = getLoggedInMember();
+    if (!loggedInSession || !actorMember) {
       return alert('Vui lòng đăng nhập hợp lệ trước khi gửi ý kiến!');
     }
 
@@ -984,7 +991,7 @@
   }
 
   async function saveEditComment(maBL) {
-    if (!loggedInUser) return alert('Vui lòng đăng nhập!');
+    if (!loggedInSession) return alert('Vui lòng đăng nhập!');
     const textarea = document.getElementById('editTextarea_' + maBL);
     const noiDungMoi = textarea ? textarea.value.trim() : '';
     if (!noiDungMoi) return alert('Nội dung bình luận không được để trống!');
@@ -1007,7 +1014,7 @@
   }
 
   async function deleteComment(maBL) {
-    if (!loggedInUser) return alert('Vui lòng đăng nhập!');
+    if (!loggedInSession) return alert('Vui lòng đăng nhập!');
     if (!confirm('Bạn có chắc muốn xóa bình luận này không?')) return;
 
     const res = await fetch(SCRIPT_URL, {
@@ -1027,8 +1034,8 @@
   }
 
   function renderReport() {
-    if (!isCurrentUserLeader()) {
-      return alert('Chỉ tài khoản Tổ trưởng mới có quyền xem báo cáo tổng hợp!');
+    if (!isLoggedInUserLeader()) {
+      return alert('Chỉ tài khoản Tổ trưởng đang đăng nhập mới có quyền xem báo cáo tổng hợp!');
     }
 
     currentMaHop = null;
@@ -1092,8 +1099,8 @@
   }
 
   function openMeetingModal() {
-    if (!isCurrentUserLeader()) {
-      return alert('Chỉ tài khoản Tổ trưởng mới có quyền tạo trang họp mới!');
+    if (!isLoggedInUserLeader()) {
+      return alert('Chỉ tài khoản Tổ trưởng đang đăng nhập mới có quyền tạo trang họp mới!');
     }
     document.getElementById('meetingModalTitle').innerText = 'Tạo trang họp mới';
     document.getElementById('editMaHop').value = '';
@@ -1106,8 +1113,8 @@
   }
 
   function openEditMeetingModal(maHop) {
-    if (!isCurrentUserLeader()) {
-      return alert('Chỉ tài khoản Tổ trưởng mới có quyền sửa cuộc họp!');
+    if (!isLoggedInUserLeader()) {
+      return alert('Chỉ tài khoản Tổ trưởng đang đăng nhập mới có quyền sửa cuộc họp!');
     }
     const ch = appData.cuocHop.find(x => String(x.MaHop).trim() === String(maHop).trim());
     if (!ch) return;
@@ -1127,8 +1134,8 @@
   }
 
   async function saveMeeting() {
-    if (!isCurrentUserLeader()) {
-      return alert('Chỉ tài khoản Tổ trưởng mới có quyền lưu cuộc họp!');
+    if (!isLoggedInUserLeader()) {
+      return alert('Chỉ tài khoản Tổ trưởng đang đăng nhập mới có quyền lưu cuộc họp!');
     }
 
     const maHop = document.getElementById('editMaHop').value.trim();
@@ -1165,8 +1172,8 @@
   }
 
   function openDeleteMeetingModal(maHop) {
-    if (!isCurrentUserLeader()) {
-      return alert('Chỉ tài khoản Tổ trưởng mới có quyền xóa cuộc họp!');
+    if (!isLoggedInUserLeader()) {
+      return alert('Chỉ tài khoản Tổ trưởng đang đăng nhập mới có quyền xóa cuộc họp!');
     }
     const ch = appData.cuocHop.find(x => String(x.MaHop).trim() === String(maHop).trim());
     if (!ch) return;
@@ -1183,7 +1190,7 @@
   }
 
   async function confirmDeleteMeeting() {
-    if (!isCurrentUserLeader() || !currentMaHop) return;
+    if (!isLoggedInUserLeader() || !currentMaHop) return;
 
     const btn = document.getElementById('btnConfirmDeleteMeeting');
     btn.disabled = true;
@@ -1210,8 +1217,8 @@
   }
 
   function openMembersManagerModal() {
-    if (!isCurrentUserLeader()) {
-      return alert('Chỉ tài khoản Tổ trưởng mới có quyền quản lý thành viên!');
+    if (!isLoggedInUserLeader()) {
+      return alert('Chỉ tài khoản Tổ trưởng đang đăng nhập mới có quyền quản lý thành viên!');
     }
     renderMembersManagerTable();
     document.getElementById('membersManagerModal').style.display = 'flex';
@@ -1229,8 +1236,8 @@
     }
 
     tbody.innerHTML = appData.thanhVien.map(tv => {
-      const isLeaderRow = isLeaderRole(tv.VaiTro);
-      const roleBadge = isLeaderRow
+      const rowIsLeader = isLeaderRoleText(tv.VaiTro);
+      const roleBadge = rowIsLeader
         ? '<span class="badge-leader">Tổ trưởng</span>'
         : '<span>Thành viên</span>';
 
@@ -1251,8 +1258,8 @@
   }
 
   function openMemberFormModal(maGV) {
-    if (!isCurrentUserLeader()) {
-      return alert('Chỉ tài khoản Tổ trưởng mới có quyền thao tác thành viên!');
+    if (!isLoggedInUserLeader()) {
+      return alert('Chỉ tài khoản Tổ trưởng đang đăng nhập mới có quyền thêm hoặc sửa thành viên!');
     }
 
     if (maGV) {
@@ -1265,7 +1272,7 @@
       document.getElementById('inHoTen').value = tv.HoTen || '';
       document.getElementById('inEmail').value = tv.Email || '';
       document.getElementById('inSoDienThoai').value = tv.SoDienThoai || '';
-      document.getElementById('inVaiTro').value = isLeaderRole(tv.VaiTro) ? 'ToTruong' : 'ThanhVien';
+      document.getElementById('inVaiTro').value = isLeaderRoleText(tv.VaiTro) ? 'ToTruong' : 'ThanhVien';
       document.getElementById('btnSaveMember').innerText = 'Cập nhật thành viên';
     } else {
       document.getElementById('memberFormTitle').innerText = 'Thêm thành viên mới';
@@ -1287,8 +1294,8 @@
   }
 
   async function saveMember() {
-    if (!isCurrentUserLeader()) {
-      return alert('Chỉ tài khoản Tổ trưởng mới có quyền lưu thông tin thành viên!');
+    if (!isLoggedInUserLeader()) {
+      return alert('Chỉ tài khoản Tổ trưởng đang đăng nhập mới có quyền lưu thông tin thành viên!');
     }
 
     const mode = document.getElementById('memberFormMode').value;
@@ -1325,8 +1332,8 @@
   }
 
   function openDeleteMemberModal(maGV) {
-    if (!isCurrentUserLeader()) {
-      return alert('Chỉ tài khoản Tổ trưởng mới có quyền xóa thành viên!');
+    if (!isLoggedInUserLeader()) {
+      return alert('Chỉ tài khoản Tổ trưởng đang đăng nhập mới có quyền xóa thành viên!');
     }
     const tv = appData.thanhVien.find(x => String(x.MaGV).trim() === String(maGV).trim());
     if (!tv) return;
@@ -1344,7 +1351,7 @@
   }
 
   async function confirmDeleteMember() {
-    if (!isCurrentUserLeader() || !pendingDeleteMemberId) return;
+    if (!isLoggedInUserLeader() || !pendingDeleteMemberId) return;
 
     const btn = document.getElementById('btnConfirmDeleteMember');
     btn.disabled = true;
@@ -1367,11 +1374,6 @@
     } else {
       alert(result.message);
     }
-  }
-
-  function isLeaderRole(vaiTro) {
-    const r = String(vaiTro || '').trim().toLowerCase();
-    return r === 'totruong' || r === 'tổ trưởng';
   }
 
   function exportSingleMeetingExcel(maHop) {
